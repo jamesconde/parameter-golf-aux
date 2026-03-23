@@ -1,0 +1,190 @@
+{
+  "train_script": "train_gpt_aux.py",
+  "iterations": 500,
+  "train_batch_tokens": 65536,
+  "val_loss_every": 100,
+  "max_wallclock_seconds": 300.0,
+  "eval_stride": 64,
+  "seeds": [
+    42,
+    1337,
+    7
+  ],
+  "log_dir": "logs",
+  "results_file": "experiments/results_auto.md",
+  "results_json": "experiments/results_auto.json",
+  "early_stop_enabled": false,
+  "early_stop_threshold": 0.02,
+  "early_stop_check_step": 200,
+  "base_env": {},
+  "experiments": [
+    {
+      "name": "baseline",
+      "env": {
+        "USE_AUX_LOSSES": "0"
+      },
+      "description": "SOTA recipe, no auxiliary losses"
+    },
+    {
+      "name": "focal_g05",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "1",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "FOCAL_GAMMA": "0.5"
+      },
+      "description": "Focal loss gamma=0.5"
+    },
+    {
+      "name": "focal_g1",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "1",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "FOCAL_GAMMA": "1.0"
+      },
+      "description": "Focal loss gamma=1.0 (data-informed recommendation)"
+    },
+    {
+      "name": "focal_g2",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "1",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "FOCAL_GAMMA": "2.0"
+      },
+      "description": "Focal loss gamma=2.0 (standard focal)"
+    },
+    {
+      "name": "focal_g3",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "1",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "FOCAL_GAMMA": "3.0"
+      },
+      "description": "Focal loss gamma=3.0 (aggressive)"
+    },
+    {
+      "name": "decorr_0001",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0.001",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0"
+      },
+      "description": "Decorrelation lambda=0.001"
+    },
+    {
+      "name": "decorr_001",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0.01",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0"
+      },
+      "description": "Decorrelation lambda=0.01"
+    },
+    {
+      "name": "decorr_005",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0.05",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0"
+      },
+      "description": "Decorrelation lambda=0.05"
+    },
+    {
+      "name": "decorr_01",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0.1",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0"
+      },
+      "description": "Decorrelation lambda=0.1"
+    },
+    {
+      "name": "rank_001",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0.01",
+        "LAMBDA_UNIGRAM": "0",
+        "RANK_EVERY": "10"
+      },
+      "description": "Rank loss lambda=0.01 (every 10 steps)"
+    },
+    {
+      "name": "rank_005",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0.05",
+        "LAMBDA_UNIGRAM": "0",
+        "RANK_EVERY": "10"
+      },
+      "description": "Rank loss lambda=0.05 (every 10 steps)"
+    },
+    {
+      "name": "rank_01",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0.1",
+        "LAMBDA_UNIGRAM": "0",
+        "RANK_EVERY": "10"
+      },
+      "description": "Rank loss lambda=0.1 (every 10 steps)"
+    },
+    {
+      "name": "unigram_001",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0.01"
+      },
+      "description": "Unigram KL lambda=0.01 (decay by 50%)"
+    },
+    {
+      "name": "unigram_005",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0.05"
+      },
+      "description": "Unigram KL lambda=0.05 (decay by 50%)"
+    },
+    {
+      "name": "unigram_01",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0.1"
+      },
+      "description": "Unigram KL lambda=0.1 (decay by 50%)"
+    }
+  ]
+}
