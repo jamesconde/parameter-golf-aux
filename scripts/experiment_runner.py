@@ -39,6 +39,7 @@ class RunConfig:
     name: str
     env: dict = field(default_factory=dict)
     description: str = ""
+    train_script: str = ""  # Override sweep-level train_script for this experiment
 
 
 @dataclass
@@ -85,11 +86,18 @@ def default_sweep_config() -> SweepConfig:
     }
 
     cfg.experiments = [
-        # Baseline — no aux losses
+        # Unmodified SOTA script — overhead check
+        RunConfig(
+            name="baseline_sota",
+            env={},
+            description="Unmodified SOTA script (overhead check)",
+            train_script="train_gpt_sota.py",
+        ),
+        # Our script with aux losses disabled — apples-to-apples reference
         RunConfig(
             name="baseline",
             env={"USE_AUX_LOSSES": "0"},
-            description="SOTA recipe, no auxiliary losses",
+            description="Our script with aux losses disabled (apples-to-apples reference)",
         ),
 
         # Focal loss sweep
@@ -323,7 +331,8 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
         return RunResult(name=experiment.name, seed=seed, error="dry_run")
 
     env = build_env(sweep, experiment, seed)
-    cmd = ["python3", sweep.train_script]
+    script = experiment.train_script or sweep.train_script
+    cmd = ["python3", script]
 
     print(f"  RUN {run_id} ...")
     t0 = time.time()

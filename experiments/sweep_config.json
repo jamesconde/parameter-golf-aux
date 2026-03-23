@@ -19,11 +19,17 @@
   "base_env": {},
   "experiments": [
     {
+      "name": "baseline_sota",
+      "env": {},
+      "description": "Unmodified SOTA script (overhead check)",
+      "train_script": "train_gpt_sota.py"
+    },
+    {
       "name": "baseline",
       "env": {
         "USE_AUX_LOSSES": "0"
       },
-      "description": "SOTA recipe, no auxiliary losses"
+      "description": "Our script with aux losses disabled (apples-to-apples reference)"
     },
     {
       "name": "focal_g05",
