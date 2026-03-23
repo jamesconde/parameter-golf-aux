@@ -1,0 +1,130 @@
+{
+  "zipf_analysis": {
+    "entropy_bits": 8.650290890123662,
+    "zipf_alpha": 0.8299868414996758,
+    "top10_coverage": 0.14565570424279425,
+    "top50_coverage": 0.3718752659986381,
+    "top100_coverage": 0.5306376231353697,
+    "top500_coverage": 0.9173214233143138,
+    "zero_count_tokens": 56711,
+    "unique_tokens": 890,
+    "actual_vocab_size": 57601,
+    "nominal_vocab_size": 1024,
+    "total_tokens": 100000512,
+    "most_common_10": [
+      [
+        1,
+        2137051
+      ],
+      [
+        2,
+        2076197
+      ],
+      [
+        3,
+        1865056
+      ],
+      [
+        4,
+        1749383
+      ],
+      [
+        5,
+        1206168
+      ],
+      [
+        6,
+        1200856
+      ],
+      [
+        7,
+        1140017
+      ],
+      [
+        8,
+        1131329
+      ],
+      [
+        9,
+        1029998
+      ],
+      [
+        10,
+        1029590
+      ]
+    ]
+  },
+  "bigram_entropy": {
+    "unweighted_mean": 5.17507623632057,
+    "weighted_mean": 6.037393119618419,
+    "median": 5.603374699782361,
+    "std": 1.4536812356092774,
+    "min": 0.0,
+    "max": 7.586203254590615,
+    "p10": 3.107503894291535,
+    "p90": 6.709057144655375,
+    "easy_frac": 0.038901601830663615,
+    "medium_frac": 0.6052631578947368,
+    "hard_frac": 0.35583524027459956,
+    "n_tokens_observed": 874
+  },
+  "positional_entropy": {
+    "mean": 8.5252777095508,
+    "std": 0.025373731956882504,
+    "pos0_entropy": 8.471681977739813,
+    "pos1_entropy": 8.53672700169302,
+    "mid_entropy": 8.537687035611656,
+    "last_entropy": 8.53855419168324,
+    "chunks": [
+      {
+        "positions": "0-255",
+        "mean_entropy": 8.527757867956609
+      },
+      {
+        "positions": "256-511",
+        "mean_entropy": 8.524088659628724
+      },
+      {
+        "positions": "512-767",
+        "mean_entropy": 8.523330346510988
+      },
+      {
+        "positions": "768-1023",
+        "mean_entropy": 8.520279240849659
+      },
+      {
+        "positions": "1024-1279",
+        "mean_entropy": 8.525234784470534
+      },
+      {
+        "positions": "1280-1535",
+        "mean_entropy": 8.525859809971385
+      },
+      {
+        "positions": "1536-1791",
+        "mean_entropy": 8.528047700669706
+      },
+      {
+        "positions": "1792-2047",
+        "mean_entropy": 8.52762326634878
+      }
+    ]
+  },
+  "document_diversity": {
+    "global_entropy_bits": 8.643210437145145,
+    "mean_doc_entropy_bits": 8.030671630077856,
+    "mixture_entropy_gap": 0.6125388070672884,
+    "mixture_gap_ratio": 0.07086936174026674,
+    "mean_kl_from_global": 0.6125388070672875,
+    "std_kl_from_global": 0.22844635679383252,
+    "max_kl_from_global": 4.932847609360013,
+    "doc_entropy_std": 0.2252432096389894,
+    "n_docs": 2000
+  },
+  "recommendations": [
+    "FOCAL LOSS: 36% of tokens are hard (bigram H >= 6 bits). Consider gamma=1.0 (gentler) \u2014 too aggressive downweighting may waste capacity on truly unpredictable tokens.",
+    "UNIGRAM KL: Top-100 tokens cover 53.1% of all text. Unigram entropy = 8.65 bits. Lambda_unigram=0.1 with decay to zero by 50% training should help the model learn these base rates faster.",
+    "DECORRELATION: With 11 layers and 8.7-bit unigram entropy, the model has ~5,632 hidden dimensions to learn ~9 bits of base-rate info. Layer redundancy is plausible \u2014 decorrelation loss should help.",
+    "TOPIC DIVERSITY: Mixture entropy gap = 0.613 bits (7.1% of global entropy). Documents are topically diverse. Topic-aware or difficulty-weighted loss could exploit this structure."
+  ]
+}
