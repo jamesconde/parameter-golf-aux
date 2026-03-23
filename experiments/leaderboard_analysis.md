@@ -1,73 +1,50 @@
-# Parameter Golf Leaderboard Analysis (2026-03-22)
+# Parameter Golf Leaderboard Analysis (Updated 2026-03-23)
 
-## Comparison Matrix: Top 5 Merged Entries
+## Current Top 5 (as of 2026-03-23)
+
+| Rank | Entry Name | BPB | Author | Date | Key New Techniques |
+|------|-----------|-----|--------|------|--------------------|
+| 1 | 11L EMA + GPTQ-lite + warmdown3500 | 1.1228 | signalrush | 03-22 | GPTQ-lite clip search, EMA decay=0.997, warmdown3500, QAT@0.15 |
+| 2 | 11L Partial RoPE + LN Scale + EMA + XSA4 | 1.1248 | jfprincz | 03-21 | Partial RoPE (16/64), layerwise LN scale |
+| 3 | 11L XSA4 + EMA + Int6 MLP3x | 1.1271 | jfprincz | 03-20 | XSA on last 4 layers, EMA replacing SWA |
+| 4 | 11L Efficient Partial XSA | 1.1307 | unnir | 03-20 | Efficient Partial XSA on deepest 3 layers |
+| 5 | 10L Int5-MLP + BigramHash(10240) | 1.1428 | thwu1 | 03-20 | Mixed int5/int6, BigramHash(10240) |
+
+**SOTA moved from 1.1428 → 1.1228 (0.020 BPB improvement) in 2 days.**
+
+## New Techniques Since Initial Analysis (03-22)
+
+- **XSA (Cross-Sequence Attention)**: Appears in 3 of top 4. Applied to last 3-4 layers.
+- **EMA (Exponential Moving Average)**: Replaces/complements SWA. decay=0.997, every step.
+- **GPTQ-lite**: Per-row optimal clip percentile search (5 candidates) for int6 quantization. Zero training cost.
+- **Partial RoPE**: Only 16 of 64 dims get rotary embeddings.
+- **Layerwise LN Scale**: 1/sqrt(layer_idx+1) normalization scaling.
+- **Shared Value Embedding**: dim=128, applied to last 2 layers with per-layer scales.
+- **Late QAT threshold**: QAT@0.15 (earlier fake quantization start).
+- **11 layers now dominant** (all top 4 use 11L).
+
+## Forking Decision (Updated)
+
+**Re-forked from new #1 (signalrush, 1.1228 BPB, 2026-03-22).**
+
+Rationale: 0.020 BPB gap to our previous fork is too large to ignore. The new #1 includes all previous techniques PLUS XSA, EMA, GPTQ-lite, Partial RoPE, LN Scale, and Shared Value Embedding.
+
+**Still no loss function modifications in ANY submission.** Our approach remains the only one exploring this dimension.
+
+## Previous Analysis (03-22, for reference)
+
+### Comparison Matrix: Previous Top 5
 
 | Rank | Entry Name | BPB | Layers | MLP | Quant | Eval Trick | Novel Modules | Loss Mods | Built On |
 |------|-----------|-----|--------|-----|-------|------------|---------------|-----------|----------|
-| 1 | 10L Int5-MLP + BigramHash(10240) | 1.1428 | 10 (5E+5D) | 3x (1536) | Int5 MLP / Int6 attn | Sliding stride=64 | SmearGate, BigramHash(10240), SWA(0.4), MagPrune | None | PR#162 (Raahil Shah) |
+| 1 | 10L Int5-MLP + BigramHash(10240) | 1.1428 | 10 (5E+5D) | 3x (1536) | Int5 MLP / Int6 attn | Sliding stride=64 | SmearGate, BigramHash(10240), SWA(0.4), MagPrune | None | PR#162 |
 | 2 | Int6 MLP3x + SmearGate + BigramHash | 1.1458 | 9 (4E+5D) | 3x (1536) | Int6 all blocks | Sliding stride=64 | SmearGate, BigramHash(4096), OrthoInit, SWA(0.5) | None | Baseline |
-| 3 | 11L MLP3x + Int6 QAT | 1.1502 | 11 | 3x (1536) | Int6 STE QAT | Sliding stride=64 | None novel | None | Baseline + QAT pattern |
+| 3 | 11L MLP3x + Int6 QAT | 1.1502 | 11 | 3x (1536) | Int6 STE QAT | Sliding stride=64 | None novel | None | Baseline + QAT |
 | 4 | SmearGate + OrthoInit + Muon WD | 1.1556 | 9 (4E+5D) | 3x (1536) | Int6 STE QAT | Sliding stride=64 | SmearGate, BigramHash(4096), OrthoInit | None | Baseline |
 | 5 | 10L Int6 QAT + Zstd MLP2.6x | 1.1586 | 10 | 2.625x (1344) | Int6 STE QAT | Sliding stride=64 | None novel | None | Baseline |
 
-## Divergent / Interesting Entries
+### Key Questions (still valid)
 
-| Entry | BPB | Track | Key Innovation |
-|-------|-----|-------|---------------|
-| LoRA TTT | 1.1928 | Record | Test-time training with rank-8 LoRA at eval. Orthogonal to all training mods. |
-| 4-Hour Baseline | 1.2074 | Non-record (unlimited) | 172B tokens, 4 hours, standard arch. Shows diminishing returns vs arch innovation. |
-| Warmdown-Quantization | 1.2154 | Record | Aggressive LR decay (warmdown=20000) tightens weight distributions for better post-quant. |
+**Q1: Single dominant recipe?** YES — even more converged now. All top entries share: 11L, Int6 QAT, 3x MLP, SmearGate, BigramHash, Muon+WD, sliding eval, zstd-22. Top entries add XSA + EMA + GPTQ-lite.
 
-## Answers to Key Questions
-
-### Q1: Is there a single dominant recipe?
-**YES.** The top 5 all share the same core recipe:
-- Int6 QAT (STE) + zstd-22 compression
-- 3x MLP expansion (funded by int6 compression savings)
-- Muon optimizer with WD ~0.04, momentum warmup 0.92→0.99
-- Sliding window evaluation at stride=64
-- FP16 tied embeddings
-- U-Net skip connections (encoder/decoder)
-- RoPE with QK-norm and logit softcap
-
-The top 2 add SmearGate + BigramHash + OrthoInit + SWA on top of this core.
-
-### Q2: Are there genuinely different approaches?
-**One:** LoRA TTT (#9, 1.1928) is genuinely different — it adapts at eval time with LoRA. This is orthogonal to all training-time optimizations and could be stacked with the SOTA recipe.
-
-No depth-recurrent, state-space, MoE, or novel tokenizer submissions exist yet.
-
-### Q3: Techniques in lower entries NOT yet in #1?
-- **LoRA TTT** (test-time training) — not in any top entry
-- **11 layers** (#3 uses 11L, #1 uses 10L with int5/int6 split)
-- **Overtone spectral init** (one entry) — not widely adopted
-
-### Q4: Has ANYONE modified the loss function?
-**NO.** Zero submissions modify the loss function. Every single entry uses standard `F.cross_entropy(logits.float(), targets, reduction="mean")`. **Our auxiliary loss approach is genuinely novel in this competition.**
-
-### Q5: What has been tried and failed?
-- Longer training (4h) shows diminishing returns vs architectural creativity
-- SWA with high collection frequency (200→100→75 steps) — 50 steps is optimal
-- Muon WD too low (0.01) or too high (0.05) — 0.04 is the sweet spot
-- Non-STE quantization has much higher penalty than STE QAT
-
-### Q6: Interesting outlier submissions?
-- **LoRA TTT**: Could be stacked with our aux losses for a combined submission
-- **Warmdown-Quantization**: Shows that training dynamics affect post-quant quality — our aux losses could similarly improve quantization-friendliness
-
-## Forking Decision
-
-**Fork #1 (thwu1, 1.1428 BPB).**
-
-Rationale:
-1. The field has fully converged on one recipe — fork the best version of it
-2. #1 includes ALL techniques from #2 (SmearGate, BigramHash, OrthoInit, SWA) PLUS:
-   - Mixed int5/int6 quantization (novel, extra layer funded by savings)
-   - BigramHash(10240) vs (4096)
-   - Magnitude pruning for better compression
-   - SWA start_frac=0.4 (more selective than 0.5)
-3. #1 is 1231 lines — well within manageable size for adding aux losses (~200-300 lines)
-4. No entry modifies the loss function — our contribution fills this gap entirely
-5. #1 builds on #2 (PR#162), so we get the full technique stack
-
-**Our auxiliary losses are the only genuinely novel contribution possible in the loss function space.** Every other team is competing on architecture/quantization/eval tricks. We occupy an entirely uncontested dimension.
+**Q4: Has ANYONE modified the loss function?** Still NO. Our approach remains genuinely novel and uncontested.

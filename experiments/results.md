@@ -1,10 +1,11 @@
 # Parameter Golf — Experiment Log
 
-## Base Recipe
-- **Forked from:** thwu1's "10L Int5-MLP + BigramHash(10240)" (1.1428 BPB, merged 2026-03-20)
-- **Techniques included:** 10L (5E+5D), int5 MLP / int6 attn, SmearGate, BigramHash(10240), OrthoInit, Muon WD=0.04, SWA(0.4), magnitude pruning, zstd-22, sliding window eval stride=64
-- **File:** `train_gpt_sota.py` (1231 lines, 52930 bytes)
-- **Our modified file:** `train_gpt_aux.py` (adds ~60 lines for aux loss integration)
+## Base Recipe (Re-forked 2026-03-23)
+- **Forked from:** signalrush's "11L EMA + GPTQ-lite + warmdown3500" (1.1228 BPB, merged 2026-03-22)
+- **Techniques included:** 11L (5E+6D), XSA on last 4 layers, Partial RoPE (16/64), LN Scale, Shared Value Embedding, EMA decay=0.997, Tight SWA, GPTQ-lite clip search, Late QAT@0.15, SmearGate, BigramHash(2048), OrthoInit, Muon WD=0.04, MTP heads, zstd-22, sliding window eval stride=64
+- **File:** `train_gpt_sota.py` (1402 lines)
+- **Our modified file:** `train_gpt_aux.py` (adds flash_attn fallback + aux loss integration)
+- **Previous fork:** thwu1's 10L (1.1428 BPB) — superseded
 
 ## Smoke Test (WSL, RTX 4060 8GB)
 - **Date:** 2026-03-22
