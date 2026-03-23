@@ -26,7 +26,12 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 try:
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
 except ImportError:
-    flash_attn_3_func = None  # Fallback for non-Hopper GPUs (Colab T4, etc.)
+    flash_attn_3_func = None
+# FlashAttention 2 fallback for Ampere GPUs (A100, etc.)
+try:
+    from flash_attn import flash_attn_func as flash_attn_2_func
+except ImportError:
+    flash_attn_2_func = None
 
 # Auxiliary loss imports
 from aux_losses.focal_loss import focal_cross_entropy
@@ -549,8 +554,10 @@ class CausalSelfAttention(nn.Module):
         q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
         if flash_attn_3_func is not None:
             y = flash_attn_3_func(q, k, v, causal=True)
+        elif flash_attn_2_func is not None:
+            y = flash_attn_2_func(q, k, v, causal=True)
         else:
-            # Fallback for non-Hopper GPUs (Colab T4, RTX 4060, etc.)
+            # PyTorch SDPA fallback (uses flash kernel on A100 via enable_flash_sdp)
             y = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), is_causal=True).transpose(1, 2)
         if self.use_xsa:
             y = self._xsa_efficient(y, v)
