@@ -16,7 +16,9 @@
   "early_stop_enabled": false,
   "early_stop_threshold": 0.02,
   "early_stop_check_step": 200,
-  "base_env": {},
+  "base_env": {
+    "USE_COMPILE": "0"
+  },
   "experiments": [
     {
       "name": "baseline_sota",
