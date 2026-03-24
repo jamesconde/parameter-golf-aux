@@ -212,55 +212,56 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
         return result
 
     with open(log_path) as f:
-        all_lines = f.readlines()
+        text = f.read()
 
-    # The log file contains the source code followed by runtime output.
-    # Find where runtime output begins (after the source code dump).
-    # Runtime output starts with lines like "val_bpb:enabled" or "train_loader:"
-    runtime_start = 0
-    for i, line in enumerate(all_lines):
-        # The first non-code runtime line — source code lines have indentation or Python syntax
-        if line.startswith('val_bpb:enabled') or line.startswith('train_loader:'):
-            runtime_start = i
-            break
-
-    # Only parse runtime output, not source code
-    text = ''.join(all_lines[runtime_start:])
+    # The log file contains the script source code interleaved with runtime output.
+    # Use a regex pattern that only matches ACTUAL numeric values (digit before dot),
+    # not Python format specifiers like {val_bpb:.4f} which match as ".4".
+    # Real BPB values are always >= 0.5 and look like "1.1234" (start with digit).
+    # Pattern: one or more digits, dot, one or more digits (e.g., "1.1234")
+    _NUM = r'\d+\.\d+'  # Matches "1.1234" but NOT ".4f" or ".8f"
 
     # Final roundtrip BPB (most authoritative)
-    m = re.search(r'final_int8_zlib_roundtrip_exact\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text)
+    m = re.search(rf'final_int8_zlib_roundtrip_exact\s+val_loss:({_NUM})\s+val_bpb:({_NUM})', text)
     if m:
         result.final_val_loss = float(m.group(1))
         result.final_val_bpb = float(m.group(2))
 
     # Fallback: final int6+zstd roundtrip
     if result.final_val_bpb is None:
-        m = re.search(r'final_int6_zstd_roundtrip_exact\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text)
+        m = re.search(rf'final_int6_zstd_roundtrip_exact\s+val_loss:({_NUM})\s+val_bpb:({_NUM})', text)
         if m:
             result.final_val_loss = float(m.group(1))
             result.final_val_bpb = float(m.group(2))
 
     # Fallback: final int6 sliding window
     if result.final_val_bpb is None:
-        m = re.search(r'final_int6_sliding_window_exact\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text)
+        m = re.search(rf'final_int6_sliding_window_exact\s+val_loss:({_NUM})\s+val_bpb:({_NUM})', text)
         if m:
             result.final_val_loss = float(m.group(1))
             result.final_val_bpb = float(m.group(2))
 
-    # Fallback: any final roundtrip line
+    # Fallback: final int6 sliding window s64
     if result.final_val_bpb is None:
-        m = re.search(r'roundtrip.*val_bpb:([\d.]+)', text)
+        m = re.search(rf'final_int6_sliding_window_s64_exact\s+val_loss:({_NUM})\s+val_bpb:({_NUM})', text)
+        if m:
+            result.final_val_loss = float(m.group(1))
+            result.final_val_bpb = float(m.group(2))
+
+    # Fallback: any final roundtrip line with real numbers
+    if result.final_val_bpb is None:
+        m = re.search(rf'roundtrip.*val_bpb:({_NUM})', text)
         if m:
             result.final_val_bpb = float(m.group(1))
 
-    # Fallback: last val_bpb from a step line (requires step:N/M prefix to avoid matching code)
+    # Fallback: last val_bpb from a step line (requires step:N/M prefix)
     if result.final_val_bpb is None:
-        matches = re.findall(r'step:\d+/\d+\s+val_loss:[\d.]+\s+val_bpb:([\d.]+)', text)
+        matches = re.findall(rf'step:\d+/\d+\s+val_loss:{_NUM}\s+val_bpb:({_NUM})', text)
         if matches:
             result.final_val_bpb = float(matches[-1])
 
-    # Val BPB history (periodic validation — requires step prefix)
-    for m in re.finditer(r'step:(\d+)/\d+\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text):
+    # Val BPB history (periodic validation — requires step prefix + real numbers)
+    for m in re.finditer(rf'step:(\d+)/\d+\s+val_loss:({_NUM})\s+val_bpb:({_NUM})', text):
         result.val_bpb_history.append({
             "step": int(m.group(1)),
             "val_loss": float(m.group(2)),
@@ -271,8 +272,8 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
     if result.val_bpb_history:
         result.best_val_bpb = min(h["val_bpb"] for h in result.val_bpb_history)
 
-    # Training loss + aux loss history (requires step prefix)
-    for m in re.finditer(r'step:(\d+)/\d+\s+train_loss:([\d.]+)(?:\s+aux_loss:([\d.]+))?', text):
+    # Training loss + aux loss history (requires step prefix + real numbers)
+    for m in re.finditer(rf'step:(\d+)/\d+\s+train_loss:({_NUM})(?:\s+aux_loss:({_NUM}))?', text):
         step = int(m.group(1))
         result.train_loss_history.append({"step": step, "train_loss": float(m.group(2))})
         if m.group(3):

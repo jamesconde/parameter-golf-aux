@@ -766,7 +766,7 @@ class GPT(nn.Module):
         ve_base = ve_cache['ve'] if ve_cache is not None else self.ve_shared(input_ids)
         ve_idx = self.ve_layer_indices.index(layer_idx)
         return ve_base * self.ve_layer_scales[ve_idx].to(dtype=ve_base.dtype)
-    def forward(self, input_ids: Tensor, target_ids: Tensor, return_hidden_states: bool = False):
+    def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
         if self.bigram is not None:
             x = x + self.bigram(input_ids)
@@ -774,22 +774,17 @@ class GPT(nn.Module):
         x = self.smear(x)
         x0 = x
         skips: list[Tensor] = []
-        hidden_states: list[Tensor] = []
         ve_cache: dict = {}
         for i in range(self.num_encoder_layers):
             ve = self._get_ve(i, input_ids, ve_cache)
             x = self.blocks[i](x, x0, v_embed=ve)
             skips.append(x)
-            if return_hidden_states:
-                hidden_states.append(x)
         for i in range(self.num_decoder_layers):
             bi = self.num_encoder_layers + i
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
             ve = self._get_ve(bi, input_ids, ve_cache)
             x = self.blocks[bi](x, x0, v_embed=ve)
-            if return_hidden_states:
-                hidden_states.append(x)
         x = self.final_norm(x)
         x_flat = x.reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
@@ -817,9 +812,57 @@ class GPT(nn.Module):
                 mtp_loss_count += 1
             if mtp_loss_count > 0:
                 main_loss = main_loss + self.mtp_loss_weight * (mtp_loss_sum / mtp_loss_count)
-        if return_hidden_states:
-            return main_loss, logits, hidden_states
         return main_loss
+    def forward_aux(self, input_ids: Tensor, target_ids: Tensor):
+        """Forward pass that returns (loss, logits, hidden_states) for aux loss computation.
+        NOT compiled — used only during aux loss training runs."""
+        x = self.tok_emb(input_ids)
+        if self.bigram is not None:
+            x = x + self.bigram(input_ids)
+        x = F.rms_norm(x, (x.size(-1),))
+        x = self.smear(x)
+        x0 = x
+        skips: list[Tensor] = []
+        hidden_states: list[Tensor] = []
+        ve_cache: dict = {}
+        for i in range(self.num_encoder_layers):
+            ve = self._get_ve(i, input_ids, ve_cache)
+            x = self.blocks[i](x, x0, v_embed=ve)
+            skips.append(x)
+            hidden_states.append(x)
+        for i in range(self.num_decoder_layers):
+            bi = self.num_encoder_layers + i
+            if skips:
+                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+            ve = self._get_ve(bi, input_ids, ve_cache)
+            x = self.blocks[bi](x, x0, v_embed=ve)
+            hidden_states.append(x)
+        x = self.final_norm(x)
+        x_flat = x.reshape(-1, x.size(-1))
+        targets = target_ids.reshape(-1)
+        if self.tie_embeddings:
+            logits_proj = F.linear(x_flat, self.tok_emb.weight)
+        else:
+            logits_proj = self.lm_head(x_flat)
+        logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+        main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
+        if self.training and self.mtp_num_heads > 0 and self.mtp_loss_weight > 0.0:
+            _, seqlen, dim = x.shape
+            mtp_loss_sum = x.new_zeros(())
+            mtp_loss_count = 0
+            for k, mtp_head in enumerate(self.mtp_heads):
+                valid_t = seqlen - (k + 1)
+                if valid_t <= 0:
+                    continue
+                mtp_hidden = x[:, :valid_t, :].reshape(-1, dim)
+                mtp_targets = target_ids[:, k + 1 :].reshape(-1)
+                mtp_logits_proj = mtp_head(mtp_hidden)
+                mtp_logits = self.logit_softcap * torch.tanh(mtp_logits_proj / self.logit_softcap)
+                mtp_loss_sum = mtp_loss_sum + F.cross_entropy(mtp_logits.float(), mtp_targets, reduction="mean")
+                mtp_loss_count += 1
+            if mtp_loss_count > 0:
+                main_loss = main_loss + self.mtp_loss_weight * (mtp_loss_sum / mtp_loss_count)
+        return main_loss, logits, hidden_states
     def forward_logits(self, input_ids: Tensor) -> Tensor:
         """Return logits (bsz, seq_len, vocab) without computing loss."""
         x = self.tok_emb(input_ids)
@@ -1096,8 +1139,10 @@ def main() -> None:
         if isinstance(module, CastedLinear):
             module.float()
     restore_low_dim_params_to_fp32(base_model)
-    compile_fullgraph = not args.use_aux_losses
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=compile_fullgraph)
+    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
+    # For aux loss runs, use uncompiled model to allow flexible forward() returns
+    # torch.compile with fullgraph=True doesn't support conditional returns
+    aux_model = base_model if args.use_aux_losses else None
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
 
     # Precompute unigram distribution for KL loss (if enabled)
@@ -1108,6 +1153,7 @@ def main() -> None:
             args.train_files, args.vocab_size
         ).to(device)
         log0("unigram distribution computed")
+
     block_named_params = list(base_model.blocks.named_parameters())
     matrix_params = [
         p
@@ -1291,26 +1337,34 @@ def main() -> None:
             x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 if args.use_aux_losses:
-                    ce_loss, logits, hidden_states = model(x, y, return_hidden_states=True)
+                    # Use uncompiled forward_aux() to get logits + hidden states
+                    ce_loss, logits, hidden_states = base_model.forward_aux(x, y)
+
+                    aux_loss = torch.zeros((), device=device)
+
                     if args.use_focal_loss:
                         targets = y.reshape(-1)
-                        ce_loss = focal_cross_entropy(
+                        focal = focal_cross_entropy(
                             logits.float(), targets,
                             gamma=args.focal_gamma,
                             label_smoothing=args.focal_label_smoothing,
                         )
-                    aux_loss = torch.zeros((), device=device)
+                        # Replace CE with focal
+                        ce_loss = focal
+
                     if args.lambda_decorr > 0:
                         decorr = inter_layer_decorrelation_loss(
                             hidden_states, sample_size=args.decorr_sample_size
                         )
                         aux_loss = aux_loss + args.lambda_decorr * decorr
+
                     if args.lambda_rank > 0 and step % args.rank_every == 0:
                         rank_penalty = representation_rank_loss(
                             hidden_states[-1],
                             target_effective_rank_ratio=args.rank_target_ratio,
                         )
                         aux_loss = aux_loss + args.lambda_rank * rank_penalty
+
                     if args.lambda_unigram > 0 and unigram_log_probs is not None:
                         total_steps = args.iterations
                         unigram_weight = args.lambda_unigram * max(
@@ -1319,6 +1373,7 @@ def main() -> None:
                         if unigram_weight > 0:
                             ukl = unigram_kl_loss(logits.float(), unigram_log_probs)
                             aux_loss = aux_loss + unigram_weight * ukl
+
                     loss = ce_loss + aux_loss
                     aux_loss_total += aux_loss.detach()
                 else:
