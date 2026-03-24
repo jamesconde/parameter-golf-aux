@@ -1,7 +1,7 @@
 {
   "train_script": "train_gpt_aux.py",
   "iterations": 500,
-  "train_batch_tokens": 393216,
+  "train_batch_tokens": 786432,
   "val_loss_every": 100,
   "max_wallclock_seconds": 300.0,
   "eval_stride": 64,

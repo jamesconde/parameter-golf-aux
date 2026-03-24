@@ -212,7 +212,20 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
         return result
 
     with open(log_path) as f:
-        text = f.read()
+        all_lines = f.readlines()
+
+    # The log file contains the source code followed by runtime output.
+    # Find where runtime output begins (after the source code dump).
+    # Runtime output starts with lines like "val_bpb:enabled" or "train_loader:"
+    runtime_start = 0
+    for i, line in enumerate(all_lines):
+        # The first non-code runtime line — source code lines have indentation or Python syntax
+        if line.startswith('val_bpb:enabled') or line.startswith('train_loader:'):
+            runtime_start = i
+            break
+
+    # Only parse runtime output, not source code
+    text = ''.join(all_lines[runtime_start:])
 
     # Final roundtrip BPB (most authoritative)
     m = re.search(r'final_int8_zlib_roundtrip_exact\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text)
@@ -227,19 +240,26 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
             result.final_val_loss = float(m.group(1))
             result.final_val_bpb = float(m.group(2))
 
+    # Fallback: final int6 sliding window
+    if result.final_val_bpb is None:
+        m = re.search(r'final_int6_sliding_window_exact\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text)
+        if m:
+            result.final_val_loss = float(m.group(1))
+            result.final_val_bpb = float(m.group(2))
+
     # Fallback: any final roundtrip line
     if result.final_val_bpb is None:
         m = re.search(r'roundtrip.*val_bpb:([\d.]+)', text)
         if m:
             result.final_val_bpb = float(m.group(1))
 
-    # Fallback: last val_bpb in log
+    # Fallback: last val_bpb from a step line (requires step:N/M prefix to avoid matching code)
     if result.final_val_bpb is None:
-        matches = re.findall(r'val_bpb:([\d.]+)', text)
+        matches = re.findall(r'step:\d+/\d+\s+val_loss:[\d.]+\s+val_bpb:([\d.]+)', text)
         if matches:
             result.final_val_bpb = float(matches[-1])
 
-    # Val BPB history (periodic validation)
+    # Val BPB history (periodic validation — requires step prefix)
     for m in re.finditer(r'step:(\d+)/\d+\s+val_loss:([\d.]+)\s+val_bpb:([\d.]+)', text):
         result.val_bpb_history.append({
             "step": int(m.group(1)),
@@ -251,7 +271,7 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
     if result.val_bpb_history:
         result.best_val_bpb = min(h["val_bpb"] for h in result.val_bpb_history)
 
-    # Training loss + aux loss history
+    # Training loss + aux loss history (requires step prefix)
     for m in re.finditer(r'step:(\d+)/\d+\s+train_loss:([\d.]+)(?:\s+aux_loss:([\d.]+))?', text):
         step = int(m.group(1))
         result.train_loss_history.append({"step": step, "train_loss": float(m.group(2))})
