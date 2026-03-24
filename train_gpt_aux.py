@@ -557,8 +557,17 @@ class CausalSelfAttention(nn.Module):
         elif flash_attn_2_func is not None:
             y = flash_attn_2_func(q, k, v, causal=True)
         else:
-            # PyTorch SDPA fallback (uses flash kernel on A100 via enable_flash_sdp)
-            y = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), is_causal=True).transpose(1, 2)
+            # PyTorch SDPA fallback — must expand KV heads for GQA compatibility
+            # flash_attn handles GQA natively, but SDPA requires matching head counts
+            qt = q.transpose(1, 2)  # [B, H, T, D]
+            kt = k.transpose(1, 2)  # [B, Hkv, T, D]
+            vt = v.transpose(1, 2)  # [B, Hkv, T, D]
+            if kt.size(1) != qt.size(1):
+                # Repeat KV heads to match Q heads: [B, Hkv, T, D] -> [B, H, T, D]
+                n_rep = qt.size(1) // kt.size(1)
+                kt = kt.repeat_interleave(n_rep, dim=1)
+                vt = vt.repeat_interleave(n_rep, dim=1)
+            y = F.scaled_dot_product_attention(qt, kt, vt, is_causal=True).transpose(1, 2)
         if self.use_xsa:
             y = self._xsa_efficient(y, v)
         y = y.reshape(bsz, seqlen, dim)
