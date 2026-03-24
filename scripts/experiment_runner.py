@@ -346,7 +346,10 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
                    dry_run: bool = False) -> RunResult:
     """Run a single experiment and return parsed results."""
     run_id = f"{experiment.name}_seed{seed}"
-    log_path = os.path.join(sweep.log_dir, f"{run_id}.txt")
+    # Resolve log path relative to training script directory (where logs/ is created)
+    script = experiment.train_script or sweep.train_script
+    script_dir = os.path.dirname(os.path.abspath(script))
+    log_path = os.path.join(script_dir, sweep.log_dir, f"{run_id}.txt")
 
     # Skip if log already exists with a final BPB
     if os.path.exists(log_path):
@@ -361,14 +364,19 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
 
     env = build_env(sweep, experiment, seed)
     script = experiment.train_script or sweep.train_script
-    cmd = ["python3", script]
 
-    print(f"  RUN {run_id} ...")
+    # Resolve working directory: use the directory containing the training script
+    # This ensures relative paths (./data/datasets/...) resolve correctly
+    script_path = os.path.abspath(script)
+    cwd = os.path.dirname(script_path)
+    cmd = ["python3", os.path.basename(script_path)]
+
+    print(f"  RUN {run_id} (cwd={cwd}) ...")
     t0 = time.time()
 
     try:
         proc = subprocess.run(
-            cmd, env=env, capture_output=True, text=True,
+            cmd, env=env, capture_output=True, text=True, cwd=cwd,
             timeout=sweep.max_wallclock_seconds * 3 + 600,  # generous timeout
         )
         if proc.returncode != 0:
@@ -702,8 +710,8 @@ def main():
     print("=" * 60)
 
     if args.report_only or args.dry_run:
-        # Discover experiments from log files
-        log_dir = Path(sweep.log_dir)
+        # Discover experiments from log files (resolve relative to cwd)
+        log_dir = Path(sweep.log_dir).resolve()
         if log_dir.exists():
             for log_file in sorted(log_dir.glob("*.txt")):
                 m = re.match(r"(.+)_seed(\d+)\.txt", log_file.name)

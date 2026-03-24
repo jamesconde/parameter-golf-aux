@@ -1064,8 +1064,8 @@ def main() -> None:
     from torch.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
     enable_cudnn_sdp(False)
     enable_flash_sdp(True)
-    enable_mem_efficient_sdp(False)
-    enable_math_sdp(False)
+    enable_mem_efficient_sdp(True)   # Fallback for GPUs without flash SDP kernel
+    enable_math_sdp(True)            # Last-resort fallback
     logfile = None
     if master_process:
         os.makedirs("logs", exist_ok=True)
