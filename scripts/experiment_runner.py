@@ -391,11 +391,24 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
 
     elapsed = time.time() - t0
 
+    # Debug: verify log file location
+    log_exists = os.path.exists(log_path)
+    if not log_exists:
+        # Try finding it in the cwd's logs directory
+        alt_log = os.path.join("logs", f"{run_id}.txt")
+        if os.path.exists(alt_log):
+            log_path = alt_log
+            log_exists = True
+        else:
+            print(f"  WARNING: log not found at {log_path} or {alt_log}")
+
     result = parse_log(log_path, experiment.name, seed)
 
     status = "OK" if result.final_val_bpb else "FAIL"
     bpb_str = f"val_bpb={result.final_val_bpb:.4f}" if result.final_val_bpb else result.error or "no result"
     print(f"  {status} {run_id} — {bpb_str} ({elapsed:.0f}s)")
+    if not result.final_val_bpb:
+        print(f"  log_path={log_path} exists={log_exists}")
 
     return result
 
@@ -710,8 +723,13 @@ def main():
     print("=" * 60)
 
     if args.report_only or args.dry_run:
-        # Discover experiments from log files (resolve relative to cwd)
+        # Discover experiments from log files — try multiple locations
         log_dir = Path(sweep.log_dir).resolve()
+        if not log_dir.exists():
+            # Try cwd-relative
+            log_dir = Path(sweep.log_dir)
+        if not log_dir.exists():
+            print(f"  WARNING: log_dir not found at {sweep.log_dir} or {Path(sweep.log_dir).resolve()}")
         if log_dir.exists():
             for log_file in sorted(log_dir.glob("*.txt")):
                 m = re.match(r"(.+)_seed(\d+)\.txt", log_file.name)
