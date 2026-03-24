@@ -294,12 +294,20 @@ def parse_log(log_path: str, name: str, seed: int) -> RunResult:
     if m:
         result.artifact_size_bytes = int(m.group(1))
 
-    # Check for errors
-    if "Traceback" in text or "RuntimeError" in text or "CUDA error" in text:
-        # Extract last traceback line
-        tb_lines = [l for l in text.split('\n') if 'Error' in l or 'error' in l.lower()]
-        if tb_lines:
-            result.error = tb_lines[-1].strip()[:200]
+    # Check for errors — look for actual traceback patterns, not source code
+    # A real traceback has "Traceback (most recent call last):" as a standalone line
+    if "Traceback (most recent call last):" in text:
+        # Find the last traceback and extract the error line
+        tb_start = text.rfind("Traceback (most recent call last):")
+        tb_section = text[tb_start:]
+        # The error type is usually the last non-empty line
+        tb_lines = [l.strip() for l in tb_section.split('\n') if l.strip()]
+        for line in reversed(tb_lines):
+            if ':' in line and not line.startswith('File ') and not line.startswith('raise '):
+                result.error = line[:200]
+                break
+    elif result.final_val_bpb is None and result.total_steps is None:
+        result.error = "Training did not produce any output (possible silent crash/OOM)"
 
     return result
 
@@ -363,6 +371,11 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
             cmd, env=env, capture_output=True, text=True,
             timeout=sweep.max_wallclock_seconds * 3 + 600,  # generous timeout
         )
+        if proc.returncode != 0:
+            # Print stderr so we can see what went wrong
+            stderr_tail = proc.stderr.strip().split('\n')[-15:] if proc.stderr else []
+            stderr_msg = '\n'.join(stderr_tail)
+            print(f"  STDERR (last 15 lines):\n{stderr_msg}")
     except subprocess.TimeoutExpired:
         return RunResult(name=experiment.name, seed=seed, error="timeout")
     except Exception as e:
