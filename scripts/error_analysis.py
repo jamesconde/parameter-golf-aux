@@ -441,14 +441,19 @@ def main():
         logit_softcap=hp.logit_softcap,
         rope_base=hp.rope_base,
         qk_gain_init=hp.qk_gain_init,
+        mtp_num_heads=getattr(hp, 'mtp_num_heads', 0),
+        mtp_loss_weight=getattr(hp, 'mtp_loss_weight', 0.2),
         bigram_vocab_size=hp.bigram_vocab_size,
         bigram_dim=hp.bigram_dim,
         xsa_last_n=hp.xsa_last_n,
         rope_dims=hp.rope_dims,
         ln_scale=hp.ln_scale,
+        dtg=getattr(hp, 'dtg_enabled', False),
         ve_enabled=hp.ve_enabled,
         ve_dim=hp.ve_dim,
         ve_layers=hp.ve_layers,
+        gated_attention=getattr(hp, 'gated_attention', False),
+        value_residual=getattr(hp, 'value_residual', False),
     ).to(device)
 
     state_dict = torch.load(args.model, map_location=device, weights_only=True)
