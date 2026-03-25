@@ -342,20 +342,23 @@ def build_env(sweep: SweepConfig, experiment: RunConfig, seed: int) -> dict:
     return env
 
 
-def _find_log(run_id: str, sweep: SweepConfig, script: str) -> str:
+def _find_log(run_id: str, sweep: SweepConfig, script: str, extra_dir: str = "") -> str:
     """Find the log file for a run, checking multiple possible locations."""
     candidates = [
         # 1. Relative to cwd (most common on Colab)
         os.path.join(sweep.log_dir, f"{run_id}.txt"),
         # 2. Relative to training script directory
         os.path.join(os.path.dirname(os.path.abspath(script)), sweep.log_dir, f"{run_id}.txt"),
-        # 3. Absolute resolved path
+        # 3. Absolute resolved path (follows symlinks)
         os.path.join(os.path.realpath(sweep.log_dir), f"{run_id}.txt"),
     ]
+    if extra_dir:
+        # 4. Relative to explicit subprocess cwd
+        candidates.insert(0, os.path.join(extra_dir, sweep.log_dir, f"{run_id}.txt"))
     for path in candidates:
         if os.path.exists(path):
             return path
-    return candidates[0]  # Return first candidate even if missing (parse_log handles it)
+    return candidates[0]
 
 
 def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
@@ -401,8 +404,8 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
 
     elapsed = time.time() - t0
 
-    # Re-find log (subprocess may have created it)
-    log_path = _find_log(run_id, sweep, script)
+    # Re-find log (subprocess may have created it in cwd)
+    log_path = _find_log(run_id, sweep, script, extra_dir=cwd)
     result = parse_log(log_path, experiment.name, seed)
 
     status = "OK" if result.final_val_bpb else "FAIL"
