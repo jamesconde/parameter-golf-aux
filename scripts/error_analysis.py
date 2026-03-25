@@ -39,17 +39,21 @@ import sentencepiece as spm
 
 
 def load_validation_tokens(data_path: str, max_tokens: int = 0) -> np.ndarray:
-    """Load validation tokens from binary files."""
+    """Load validation tokens from binary files (skipping 256-int32 header)."""
     pattern = os.path.join(data_path, "fineweb_val_*.bin")
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No validation files matching {pattern}")
+    header_bytes = 256 * np.dtype("<i4").itemsize  # 1024 bytes
     arrays = []
     total = 0
     for f in files:
-        tokens = np.memmap(f, dtype=np.uint16, mode="r")
-        arrays.append(np.array(tokens))
+        header = np.fromfile(f, dtype="<i4", count=256)
+        num_tokens = int(header[2])
+        tokens = np.fromfile(f, dtype="<u2", count=num_tokens, offset=header_bytes)
+        arrays.append(tokens)
         total += len(tokens)
+        print(f"  Loaded {f}: {len(tokens):,} tokens (max_id={tokens.max()})")
         if max_tokens > 0 and total >= max_tokens:
             break
     result = np.concatenate(arrays)

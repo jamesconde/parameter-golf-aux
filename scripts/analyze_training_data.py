@@ -30,10 +30,13 @@ def load_tokens(pattern: str, max_shards: int = 1) -> np.ndarray:
         print(f"ERROR: No files matching {pattern}")
         sys.exit(1)
     arrays = []
+    header_bytes = 256 * np.dtype("<i4").itemsize  # 1024 bytes
     for f in files:
-        tokens = np.memmap(f, dtype=np.uint16, mode="r")
-        arrays.append(np.array(tokens))  # copy to memory
-        print(f"  Loaded {f}: {len(tokens):,} tokens")
+        header = np.fromfile(f, dtype="<i4", count=256)
+        num_tokens = int(header[2])
+        tokens = np.fromfile(f, dtype="<u2", count=num_tokens, offset=header_bytes)
+        arrays.append(tokens)
+        print(f"  Loaded {f}: {len(tokens):,} tokens (max_id={tokens.max()})")
     return np.concatenate(arrays)
 
 
