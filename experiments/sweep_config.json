@@ -318,7 +318,9 @@
       "name": "sched_smooth_005",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_LABEL_SMOOTHING": "0.05"
+        "SCHED_LABEL_SMOOTHING": "0.05",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled label smoothing peak=0.05 (5-50% of training)"
     },
@@ -326,7 +328,9 @@
       "name": "sched_smooth_01",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_LABEL_SMOOTHING": "0.1"
+        "SCHED_LABEL_SMOOTHING": "0.1",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled label smoothing peak=0.1 (5-50% of training)"
     },
@@ -334,7 +338,9 @@
       "name": "sched_smooth_02",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_LABEL_SMOOTHING": "0.2"
+        "SCHED_LABEL_SMOOTHING": "0.2",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled label smoothing peak=0.2 (5-50% of training)"
     },
@@ -342,7 +348,9 @@
       "name": "sched_noise_001",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_GRAD_NOISE": "0.001"
+        "SCHED_GRAD_NOISE": "0.001",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled gradient noise scale=0.001 (5-50% of training)"
     },
@@ -350,7 +358,9 @@
       "name": "sched_noise_005",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_GRAD_NOISE": "0.005"
+        "SCHED_GRAD_NOISE": "0.005",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled gradient noise scale=0.005 (5-50% of training)"
     },
@@ -358,7 +368,9 @@
       "name": "sched_noise_01",
       "env": {
         "USE_AUX_LOSSES": "0",
-        "SCHED_GRAD_NOISE": "0.01"
+        "SCHED_GRAD_NOISE": "0.01",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Scheduled gradient noise scale=0.01 (5-50% of training)"
     },
@@ -367,9 +379,20 @@
       "env": {
         "USE_AUX_LOSSES": "0",
         "SCHED_LABEL_SMOOTHING": "0.05",
-        "SCHED_GRAD_NOISE": "0.005"
+        "SCHED_GRAD_NOISE": "0.005",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
       },
       "description": "Smoothing 0.05 + noise 0.005 combined"
+    },
+    {
+      "name": "baseline_1h",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "Baseline (no aux losses) at 1-hour wallclock for perturbation comparison"
     }
   ]
 }
