@@ -116,6 +116,8 @@ def analyze_model(model, val_tokens: np.ndarray, device: torch.device,
     all_entropies = []       # Output distribution entropy
     all_max_probs = []       # Confidence (max probability)
     all_seq_ids = []         # Which sequence this token belongs to
+    all_inputs = []          # Input token IDs (for context reconstruction)
+    all_top1_preds = []      # Model's top-1 prediction
 
     print(f"Analyzing {n_seqs} sequences of {seq_len} tokens ({n_seqs * seq_len:,} total)...")
 
@@ -165,6 +167,8 @@ def analyze_model(model, val_tokens: np.ndarray, device: torch.device,
         all_entropies.append(entropy.cpu())
         all_max_probs.append(max_prob.cpu())
         all_seq_ids.append(seq_ids.cpu())
+        all_inputs.append(x.reshape(-1).cpu())
+        all_top1_preds.append(top_k_preds[:, 0].cpu())
 
         if (batch_start // batch_size) % 10 == 0:
             print(f"  Batch {batch_start // batch_size + 1}/{(n_seqs + batch_size - 1) // batch_size}")
@@ -325,6 +329,89 @@ def analyze_model(model, val_tokens: np.ndarray, device: torch.device,
         ),
     }
 
+    # 9. Deep dive: what ARE the "hopeless" tokens?
+    inputs = torch.cat(all_inputs).numpy()
+    top1_preds = torch.cat(all_top1_preds).numpy()
+
+    if sp is not None:
+        far_wrong_mask = far_wrong
+        far_wrong_indices = np.where(far_wrong_mask)[0]
+
+        # Sample up to 200 far-wrong tokens for analysis
+        sample_size = min(200, len(far_wrong_indices))
+        if sample_size > 0:
+            sample_idx = np.random.choice(far_wrong_indices, sample_size, replace=False)
+            sample_idx.sort()
+
+            # Classify what makes them hard
+            categories = defaultdict(int)
+            examples = []
+            for idx in sample_idx:
+                target_id = int(targets[idx])
+                pred_id = int(top1_preds[idx])
+                pos = int(positions[idx])
+                loss_val = float(losses[idx])
+
+                target_piece = sp.id_to_piece(target_id) if target_id < sp.vocab_size() else f"<id:{target_id}>"
+                pred_piece = sp.id_to_piece(pred_id) if pred_id < sp.vocab_size() else f"<id:{pred_id}>"
+
+                # Get context (previous 10 tokens)
+                seq_start = (idx // seq_len) * seq_len
+                context_start = max(0, idx - 10)
+                context_ids = inputs[context_start:idx + 1].tolist()
+                context_pieces = []
+                for cid in context_ids:
+                    if cid < sp.vocab_size():
+                        context_pieces.append(sp.id_to_piece(int(cid)))
+                    else:
+                        context_pieces.append(f"<{cid}>")
+                context_str = "".join(context_pieces)
+
+                # Categorize
+                target_text = target_piece.replace("▁", "")
+                if target_text and target_text[0].isupper():
+                    categories["capitalized_word"] += 1
+                elif target_text.isdigit():
+                    categories["number"] += 1
+                elif not target_text.isalnum() and target_text:
+                    categories["punctuation/symbol"] += 1
+                elif len(target_text) <= 2:
+                    categories["short_token"] += 1
+                elif pos < 16:
+                    categories["sequence_start"] += 1
+                else:
+                    categories["common_word"] += 1
+
+                if len(examples) < 30:
+                    examples.append({
+                        "position": pos,
+                        "loss": round(loss_val, 2),
+                        "target": target_piece,
+                        "predicted": pred_piece,
+                        "context": context_str[-60:],  # Last 60 chars
+                    })
+
+            # What fraction are in hard documents?
+            far_wrong_doc_losses = []
+            for idx in sample_idx:
+                sid = seq_ids[idx]
+                doc_mask = seq_ids == sid
+                far_wrong_doc_losses.append(float(losses[doc_mask].mean()))
+            far_wrong_doc_losses = np.array(far_wrong_doc_losses)
+
+            report["hopeless_deep_dive"] = {
+                "total_far_wrong": int(far_wrong_mask.sum()),
+                "pct_of_all_tokens": float(far_wrong_mask.mean() * 100),
+                "sample_size": sample_size,
+                "category_breakdown": dict(sorted(categories.items(), key=lambda x: -x[1])),
+                "mean_position": float(positions[far_wrong_mask].mean()),
+                "pct_in_first_64_positions": float((positions[far_wrong_mask] < 64).mean() * 100),
+                "mean_doc_loss_of_hard_tokens": float(far_wrong_doc_losses.mean()),
+                "mean_doc_loss_overall": float(seq_losses.mean()),
+                "hard_tokens_in_hard_docs_pct": float((far_wrong_doc_losses > seq_losses.mean() + seq_losses.std()).mean() * 100),
+                "examples": examples,
+            }
+
     return report
 
 
@@ -392,6 +479,22 @@ def print_report(report: dict):
     print(f"  Wrong but in top-10:        {imp['wrong_but_in_top10_pct']:.1f}% (mean loss: {imp['close_wrong_mean_loss']:.4f})")
     print(f"  Wrong, not in top-10:       {imp['wrong_not_in_top10_pct']:.1f}% (mean loss: {imp['far_wrong_mean_loss']:.4f})")
     print(f"\n  {imp['insight']}")
+
+    if "hopeless_deep_dive" in report:
+        hd = report["hopeless_deep_dive"]
+        print(f"\n--- Deep Dive: 'Hopeless' Tokens (not in top-10) ---")
+        print(f"  Total: {hd['total_far_wrong']:,} ({hd['pct_of_all_tokens']:.1f}% of all tokens)")
+        print(f"  Mean position: {hd['mean_position']:.0f} (first 64 positions: {hd['pct_in_first_64_positions']:.1f}%)")
+        print(f"  In hard documents: {hd['hard_tokens_in_hard_docs_pct']:.1f}% (above mean+std doc loss)")
+        print(f"\n  Category breakdown (sampled {hd['sample_size']}):")
+        for cat, count in hd["category_breakdown"].items():
+            print(f"    {cat:<25} {count:>4} ({count/hd['sample_size']*100:.1f}%)")
+        print(f"\n  Example tokens (target | predicted | context):")
+        for ex in hd["examples"][:15]:
+            ctx = ex['context'].replace('\n', '\\n')
+            print(f"    pos:{ex['position']:>4} loss:{ex['loss']:>5.1f} "
+                  f"target='{ex['target']}' pred='{ex['predicted']}' "
+                  f"ctx='...{ctx}'")
 
 
 def main():
