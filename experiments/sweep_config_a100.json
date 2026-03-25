@@ -193,6 +193,126 @@
         "LAMBDA_UNIGRAM": "0.1"
       },
       "description": "Unigram KL lambda=0.1 (decay by 50%)"
+    },
+    {
+      "name": "margin_05",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "0.5",
+        "USE_CLOSE_WRONG_BOOST": "0",
+        "TOPK_MARGIN_K": "10",
+        "TOPK_MARGIN_MARGIN": "1.0"
+      },
+      "description": "Top-K margin loss lambda=0.5 (k=10, margin=1.0)"
+    },
+    {
+      "name": "margin_1",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "1.0",
+        "USE_CLOSE_WRONG_BOOST": "0",
+        "TOPK_MARGIN_K": "10",
+        "TOPK_MARGIN_MARGIN": "1.0"
+      },
+      "description": "Top-K margin loss lambda=1.0 (k=10, margin=1.0)"
+    },
+    {
+      "name": "margin_2",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "2.0",
+        "USE_CLOSE_WRONG_BOOST": "0",
+        "TOPK_MARGIN_K": "10",
+        "TOPK_MARGIN_MARGIN": "1.0"
+      },
+      "description": "Top-K margin loss lambda=2.0 (k=10, margin=1.0)"
+    },
+    {
+      "name": "margin_1_m05",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "1.0",
+        "USE_CLOSE_WRONG_BOOST": "0",
+        "TOPK_MARGIN_K": "10",
+        "TOPK_MARGIN_MARGIN": "0.5"
+      },
+      "description": "Top-K margin loss lambda=1.0 (k=10, margin=0.5 - gentler)"
+    },
+    {
+      "name": "margin_1_m2",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "1.0",
+        "USE_CLOSE_WRONG_BOOST": "0",
+        "TOPK_MARGIN_K": "10",
+        "TOPK_MARGIN_MARGIN": "2.0"
+      },
+      "description": "Top-K margin loss lambda=1.0 (k=10, margin=2.0 - aggressive)"
+    },
+    {
+      "name": "boost_15",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "0",
+        "USE_CLOSE_WRONG_BOOST": "1",
+        "CLOSE_WRONG_BOOST": "1.5",
+        "CLOSE_WRONG_K": "10"
+      },
+      "description": "Close-wrong CE boost 1.5x (k=10)"
+    },
+    {
+      "name": "boost_2",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "0",
+        "USE_CLOSE_WRONG_BOOST": "1",
+        "CLOSE_WRONG_BOOST": "2.0",
+        "CLOSE_WRONG_K": "10"
+      },
+      "description": "Close-wrong CE boost 2.0x (k=10)"
+    },
+    {
+      "name": "boost_3",
+      "env": {
+        "USE_AUX_LOSSES": "1",
+        "USE_FOCAL_LOSS": "0",
+        "LAMBDA_DECORR": "0",
+        "LAMBDA_RANK": "0",
+        "LAMBDA_UNIGRAM": "0",
+        "LAMBDA_TOPK_MARGIN": "0",
+        "USE_CLOSE_WRONG_BOOST": "1",
+        "CLOSE_WRONG_BOOST": "3.0",
+        "CLOSE_WRONG_K": "10"
+      },
+      "description": "Close-wrong CE boost 3.0x (k=10)"
     }
   ]
 }

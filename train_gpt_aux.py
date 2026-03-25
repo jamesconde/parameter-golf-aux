@@ -38,6 +38,7 @@ from aux_losses.focal_loss import focal_cross_entropy
 from aux_losses.decorrelation import inter_layer_decorrelation_loss
 from aux_losses.rank_loss import representation_rank_loss
 from aux_losses.unigram_kl import unigram_kl_loss, compute_unigram_distribution
+from aux_losses.topk_margin import topk_margin_loss, close_wrong_boost_loss
 
 class Hyperparameters:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
@@ -128,6 +129,12 @@ class Hyperparameters:
     rank_target_ratio = float(os.environ.get("RANK_TARGET_RATIO", 0.8))
     lambda_unigram = float(os.environ.get("LAMBDA_UNIGRAM", 0.0))
     unigram_decay_frac = float(os.environ.get("UNIGRAM_DECAY_FRAC", 0.5))
+    lambda_topk_margin = float(os.environ.get("LAMBDA_TOPK_MARGIN", 0.0))
+    topk_margin_k = int(os.environ.get("TOPK_MARGIN_K", 10))
+    topk_margin_margin = float(os.environ.get("TOPK_MARGIN_MARGIN", 1.0))
+    use_close_wrong_boost = bool(int(os.environ.get("USE_CLOSE_WRONG_BOOST", "0")))
+    close_wrong_boost = float(os.environ.get("CLOSE_WRONG_BOOST", 2.0))
+    close_wrong_k = int(os.environ.get("CLOSE_WRONG_K", 10))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -1809,6 +1816,19 @@ def main() -> None:
                         if unigram_weight > 0:
                             ukl = unigram_kl_loss(logits.float(), unigram_log_probs)
                             aux_loss = aux_loss + unigram_weight * ukl
+                    if args.lambda_topk_margin > 0:
+                        targets = y.reshape(-1)
+                        tm = topk_margin_loss(
+                            logits.float(), targets,
+                            k=args.topk_margin_k, margin=args.topk_margin_margin,
+                        )
+                        aux_loss = aux_loss + args.lambda_topk_margin * tm
+                    if args.use_close_wrong_boost:
+                        targets = y.reshape(-1)
+                        ce_loss = close_wrong_boost_loss(
+                            logits.float(), targets,
+                            k=args.close_wrong_k, boost=args.close_wrong_boost,
+                        )
                     loss = ce_loss + aux_loss
                     aux_loss_total += aux_loss.detach()
                 else:
