@@ -313,6 +313,63 @@
         "CLOSE_WRONG_K": "10"
       },
       "description": "Close-wrong CE boost 3.0x (k=10)"
+    },
+    {
+      "name": "sched_smooth_005",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_LABEL_SMOOTHING": "0.05"
+      },
+      "description": "Scheduled label smoothing peak=0.05 (5-50% of training)"
+    },
+    {
+      "name": "sched_smooth_01",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_LABEL_SMOOTHING": "0.1"
+      },
+      "description": "Scheduled label smoothing peak=0.1 (5-50% of training)"
+    },
+    {
+      "name": "sched_smooth_02",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_LABEL_SMOOTHING": "0.2"
+      },
+      "description": "Scheduled label smoothing peak=0.2 (5-50% of training)"
+    },
+    {
+      "name": "sched_noise_001",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_GRAD_NOISE": "0.001"
+      },
+      "description": "Scheduled gradient noise scale=0.001 (5-50% of training)"
+    },
+    {
+      "name": "sched_noise_005",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_GRAD_NOISE": "0.005"
+      },
+      "description": "Scheduled gradient noise scale=0.005 (5-50% of training)"
+    },
+    {
+      "name": "sched_noise_01",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_GRAD_NOISE": "0.01"
+      },
+      "description": "Scheduled gradient noise scale=0.01 (5-50% of training)"
+    },
+    {
+      "name": "sched_combo",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "SCHED_LABEL_SMOOTHING": "0.05",
+        "SCHED_GRAD_NOISE": "0.005"
+      },
+      "description": "Smoothing 0.05 + noise 0.005 combined"
     }
   ]
 }

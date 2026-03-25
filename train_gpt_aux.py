@@ -39,6 +39,7 @@ from aux_losses.decorrelation import inter_layer_decorrelation_loss
 from aux_losses.rank_loss import representation_rank_loss
 from aux_losses.unigram_kl import unigram_kl_loss, compute_unigram_distribution
 from aux_losses.topk_margin import topk_margin_loss, close_wrong_boost_loss
+from aux_losses.scheduled_perturbation import LossScheduler, truncated_ce_loss
 
 class Hyperparameters:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
@@ -135,6 +136,15 @@ class Hyperparameters:
     use_close_wrong_boost = bool(int(os.environ.get("USE_CLOSE_WRONG_BOOST", "0")))
     close_wrong_boost = float(os.environ.get("CLOSE_WRONG_BOOST", 2.0))
     close_wrong_k = int(os.environ.get("CLOSE_WRONG_K", 10))
+
+    # Scheduled perturbation (works on compiled path — no forward_aux needed)
+    sched_label_smoothing = float(os.environ.get("SCHED_LABEL_SMOOTHING", 0.0))
+    sched_smooth_start = float(os.environ.get("SCHED_SMOOTH_START", 0.05))
+    sched_smooth_end = float(os.environ.get("SCHED_SMOOTH_END", 0.5))
+    sched_grad_noise = float(os.environ.get("SCHED_GRAD_NOISE", 0.0))
+    sched_noise_start = float(os.environ.get("SCHED_NOISE_START", 0.05))
+    sched_noise_end = float(os.environ.get("SCHED_NOISE_END", 0.5))
+    loss_truncation_max = float(os.environ.get("LOSS_TRUNCATION_MAX", 0.0))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -1610,6 +1620,24 @@ def main() -> None:
         unigram_log_probs = compute_unigram_distribution(args.train_files, args.vocab_size).to(device)
         log0("unigram distribution computed")
 
+    # Scheduled loss perturbation (works on compiled path)
+    loss_scheduler = None
+    has_perturbation = (args.sched_label_smoothing > 0 or args.sched_grad_noise > 0)
+    if has_perturbation:
+        loss_scheduler = LossScheduler(
+            label_smoothing_peak=args.sched_label_smoothing,
+            label_smoothing_start_frac=args.sched_smooth_start,
+            label_smoothing_end_frac=args.sched_smooth_end,
+            vocab_size=args.vocab_size,
+            grad_noise_scale=args.sched_grad_noise,
+            grad_noise_start_frac=args.sched_noise_start,
+            grad_noise_end_frac=args.sched_noise_end,
+        )
+        log0(f"loss_scheduler: label_smoothing={args.sched_label_smoothing} "
+             f"({args.sched_smooth_start}-{args.sched_smooth_end}) "
+             f"grad_noise={args.sched_grad_noise} "
+             f"({args.sched_noise_start}-{args.sched_noise_end})")
+
     # Optimizer split:
     # - 4 parameter banks -> Muon (batched Newton-Schulz)
     # - token embedding -> Adam
@@ -1833,6 +1861,9 @@ def main() -> None:
                     aux_loss_total += aux_loss.detach()
                 else:
                     loss = model(x, y)
+            # Scheduled perturbation (works on BOTH compiled and aux paths)
+            if loss_scheduler is not None:
+                loss = loss_scheduler.perturb(loss, step, args.iterations)
             train_loss += loss.detach()
             (loss * grad_scale).backward()
         train_loss /= grad_accum_steps
