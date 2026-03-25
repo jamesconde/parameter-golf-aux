@@ -56,6 +56,7 @@ class SweepConfig:
     # Experiment settings
     seeds: list = field(default_factory=lambda: [42, 1337, 7])
     log_dir: str = "logs"
+    live_output: bool = True  # Print training output live (not captured)
     results_file: str = "experiments/results_auto.md"
     results_json: str = "experiments/results_auto.json"
 
@@ -386,17 +387,32 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
     cwd = os.path.dirname(script_path)
     cmd = ["python3", os.path.basename(script_path)]
 
-    print(f"  RUN {run_id} (cwd={cwd}) ...")
+    # Use the per-experiment wallclock if set, otherwise sweep default
+    wallclock = float(experiment.env.get("MAX_WALLCLOCK_SECONDS", sweep.max_wallclock_seconds))
+    timeout = wallclock * 3 + 600
+
+    print(f"  RUN {run_id} (cwd={cwd}, wallclock={wallclock:.0f}s) ...", flush=True)
     t0 = time.time()
 
     try:
-        proc = subprocess.run(
-            cmd, env=env, capture_output=True, text=True, cwd=cwd,
-            timeout=sweep.max_wallclock_seconds * 3 + 600,
-        )
-        if proc.returncode != 0:
-            stderr_tail = proc.stderr.strip().split('\n')[-15:] if proc.stderr else []
-            print(f"  STDERR (last 15 lines):\n" + '\n'.join(stderr_tail))
+        if sweep.live_output:
+            # Stream output live — training progress visible in notebook
+            proc = subprocess.run(
+                cmd, env=env, cwd=cwd,
+                stdout=None, stderr=subprocess.PIPE, text=True,
+                timeout=timeout,
+            )
+            if proc.returncode != 0:
+                stderr_tail = proc.stderr.strip().split('\n')[-15:] if proc.stderr else []
+                print(f"  STDERR (last 15 lines):\n" + '\n'.join(stderr_tail))
+        else:
+            proc = subprocess.run(
+                cmd, env=env, capture_output=True, text=True, cwd=cwd,
+                timeout=timeout,
+            )
+            if proc.returncode != 0:
+                stderr_tail = proc.stderr.strip().split('\n')[-15:] if proc.stderr else []
+                print(f"  STDERR (last 15 lines):\n" + '\n'.join(stderr_tail))
     except subprocess.TimeoutExpired:
         return RunResult(name=experiment.name, seed=seed, error="timeout")
     except Exception as e:
@@ -616,6 +632,10 @@ def main():
     parser.add_argument("--val-every", type=int, help="Override validation interval")
     parser.add_argument("--train-script", help="Override training script path")
     parser.add_argument("--log-dir", help="Override log directory")
+    parser.add_argument("--live", action="store_true", default=True,
+                        help="Stream training output live (default: True)")
+    parser.add_argument("--no-live", action="store_true",
+                        help="Capture output instead of streaming live")
     args = parser.parse_args()
 
     # Generate config mode
@@ -683,6 +703,8 @@ def main():
         sweep.train_script = args.train_script
     if args.log_dir:
         sweep.log_dir = args.log_dir
+    if args.no_live:
+        sweep.live_output = False
 
     # Single experiment mode
     if args.name:
