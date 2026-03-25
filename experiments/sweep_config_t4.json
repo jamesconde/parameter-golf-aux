@@ -393,6 +393,39 @@
         "ITERATIONS": "20000"
       },
       "description": "Baseline (no aux losses) at 1-hour wallclock for perturbation comparison"
+    },
+    {
+      "name": "char_hash_512",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "CHAR_HASH_BUCKETS": "512",
+        "CHAR_HASH_DIM": "128",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "CharacterHash(512, 128) \u2014 character-level features (~31KB)"
+    },
+    {
+      "name": "char_hash_1024",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "CHAR_HASH_BUCKETS": "1024",
+        "CHAR_HASH_DIM": "128",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "CharacterHash(1024, 128) \u2014 character-level features (~62KB)"
+    },
+    {
+      "name": "char_hash_1024_d64",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "CHAR_HASH_BUCKETS": "1024",
+        "CHAR_HASH_DIM": "64",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "CharacterHash(1024, 64) \u2014 smaller dim (~31KB)"
     }
   ]
 }

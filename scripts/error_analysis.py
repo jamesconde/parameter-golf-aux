@@ -561,6 +561,9 @@ def main():
         ve_layers=hp.ve_layers,
         gated_attention=getattr(hp, 'gated_attention', False),
         value_residual=getattr(hp, 'value_residual', False),
+        char_hash_buckets=getattr(hp, 'char_hash_buckets', 0),
+        char_hash_dim=getattr(hp, 'char_hash_dim', 128),
+        tokenizer_path=getattr(hp, 'tokenizer_path', ''),
     ).to(device)
 
     state_dict = torch.load(args.model, map_location=device, weights_only=True)

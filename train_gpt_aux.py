@@ -40,6 +40,7 @@ from aux_losses.rank_loss import representation_rank_loss
 from aux_losses.unigram_kl import unigram_kl_loss, compute_unigram_distribution
 from aux_losses.topk_margin import topk_margin_loss, close_wrong_boost_loss
 from aux_losses.scheduled_perturbation import LossScheduler, truncated_ce_loss
+from aux_losses.char_hash import CharacterHashEmbedding
 
 class Hyperparameters:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
@@ -145,6 +146,10 @@ class Hyperparameters:
     sched_noise_start = float(os.environ.get("SCHED_NOISE_START", 0.05))
     sched_noise_end = float(os.environ.get("SCHED_NOISE_END", 0.5))
     loss_truncation_max = float(os.environ.get("LOSS_TRUNCATION_MAX", 0.0))
+
+    # Character-level hash embedding (architecture modification)
+    char_hash_buckets = int(os.environ.get("CHAR_HASH_BUCKETS", 0))  # 0 = disabled
+    char_hash_dim = int(os.environ.get("CHAR_HASH_DIM", 128))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -858,6 +863,9 @@ class GPT(nn.Module):
         ve_layers: str = "9,10",
         gated_attention: bool = False,
         value_residual: bool = False,
+        char_hash_buckets: int = 0,
+        char_hash_dim: int = 128,
+        tokenizer_path: str = "",
     ):
         super().__init__()
         self._ve_target_dim = num_kv_heads * (model_dim // num_heads)  # kv_dim for value projection
@@ -871,6 +879,7 @@ class GPT(nn.Module):
         self.mtp_loss_weight = mtp_loss_weight
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
         self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim) if bigram_vocab_size > 0 else None
+        self.char_hash = CharacterHashEmbedding(vocab_size, char_hash_buckets, char_hash_dim, model_dim, tokenizer_path) if char_hash_buckets > 0 else None
         self.smear = SmearGate(model_dim)
         self.num_encoder_layers = num_layers // 2
         self.num_decoder_layers = num_layers - self.num_encoder_layers
@@ -969,6 +978,8 @@ class GPT(nn.Module):
         x = self.tok_emb(input_ids)
         if self.bigram is not None:
             x = x + self.bigram(input_ids)
+        if self.char_hash is not None:
+            x = x + self.char_hash(input_ids)
         x = F.rms_norm(x, (x.size(-1),))
         x = self.smear(x)
         x0 = x
@@ -1027,6 +1038,8 @@ class GPT(nn.Module):
         x = self.tok_emb(input_ids)
         if self.bigram is not None:
             x = x + self.bigram(input_ids)
+        if self.char_hash is not None:
+            x = x + self.char_hash(input_ids)
         x = F.rms_norm(x, (x.size(-1),))
         x = self.smear(x)
         x0 = x
@@ -1086,6 +1099,8 @@ class GPT(nn.Module):
         x = self.tok_emb(input_ids)
         if self.bigram is not None:
             x = x + self.bigram(input_ids)
+        if self.char_hash is not None:
+            x = x + self.char_hash(input_ids)
         x = F.rms_norm(x, (x.size(-1),))
         x = self.smear(x)
         x0 = x
@@ -1598,6 +1613,9 @@ def main() -> None:
         ve_layers=args.ve_layers,
         gated_attention=args.gated_attention,
         value_residual=args.value_residual,
+        char_hash_buckets=args.char_hash_buckets,
+        char_hash_dim=args.char_hash_dim,
+        tokenizer_path=args.tokenizer_path,
     ).to(device).bfloat16()
     # Banks stay FP32 (like CastedLinear weights), cast to BF16 in forward
     base_model.qo_bank.data = base_model.qo_bank.data.float()
@@ -1714,7 +1732,8 @@ def main() -> None:
         optimizers.append(optimizer_head)
     n_params = sum(p.numel() for p in base_model.parameters())
     mtp_params = sum(p.numel() for p in base_model.mtp_heads.parameters())
-    log0(f"model_params:{n_params}")
+    char_hash_params = sum(p.numel() for p in base_model.char_hash.parameters()) if base_model.char_hash is not None else 0
+    log0(f"model_params:{n_params} (char_hash:{char_hash_params})")
     log0(f"mtp_num_heads:{args.mtp_num_heads} mtp_loss_weight:{args.mtp_loss_weight} mtp_params:{mtp_params}")
     xsa_layers = [i for i, b in enumerate(base_model.blocks) if b.attn.use_xsa]
     log0(f"XSA:last_{args.xsa_last_n} active_layers:{xsa_layers}")
