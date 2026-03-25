@@ -342,14 +342,28 @@ def build_env(sweep: SweepConfig, experiment: RunConfig, seed: int) -> dict:
     return env
 
 
+def _find_log(run_id: str, sweep: SweepConfig, script: str) -> str:
+    """Find the log file for a run, checking multiple possible locations."""
+    candidates = [
+        # 1. Relative to cwd (most common on Colab)
+        os.path.join(sweep.log_dir, f"{run_id}.txt"),
+        # 2. Relative to training script directory
+        os.path.join(os.path.dirname(os.path.abspath(script)), sweep.log_dir, f"{run_id}.txt"),
+        # 3. Absolute resolved path
+        os.path.join(os.path.realpath(sweep.log_dir), f"{run_id}.txt"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]  # Return first candidate even if missing (parse_log handles it)
+
+
 def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
                    dry_run: bool = False) -> RunResult:
     """Run a single experiment and return parsed results."""
     run_id = f"{experiment.name}_seed{seed}"
-    # Resolve log path relative to training script directory (where logs/ is created)
     script = experiment.train_script or sweep.train_script
-    script_dir = os.path.dirname(os.path.abspath(script))
-    log_path = os.path.join(script_dir, sweep.log_dir, f"{run_id}.txt")
+    log_path = _find_log(run_id, sweep, script)
 
     # Skip if log already exists with a final BPB
     if os.path.exists(log_path):
@@ -363,10 +377,8 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
         return RunResult(name=experiment.name, seed=seed, error="dry_run")
 
     env = build_env(sweep, experiment, seed)
-    script = experiment.train_script or sweep.train_script
 
     # Resolve working directory: use the directory containing the training script
-    # This ensures relative paths (./data/datasets/...) resolve correctly
     script_path = os.path.abspath(script)
     cwd = os.path.dirname(script_path)
     cmd = ["python3", os.path.basename(script_path)]
@@ -377,13 +389,11 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
     try:
         proc = subprocess.run(
             cmd, env=env, capture_output=True, text=True, cwd=cwd,
-            timeout=sweep.max_wallclock_seconds * 3 + 600,  # generous timeout
+            timeout=sweep.max_wallclock_seconds * 3 + 600,
         )
         if proc.returncode != 0:
-            # Print stderr so we can see what went wrong
             stderr_tail = proc.stderr.strip().split('\n')[-15:] if proc.stderr else []
-            stderr_msg = '\n'.join(stderr_tail)
-            print(f"  STDERR (last 15 lines):\n{stderr_msg}")
+            print(f"  STDERR (last 15 lines):\n" + '\n'.join(stderr_tail))
     except subprocess.TimeoutExpired:
         return RunResult(name=experiment.name, seed=seed, error="timeout")
     except Exception as e:
@@ -391,24 +401,13 @@ def run_experiment(sweep: SweepConfig, experiment: RunConfig, seed: int,
 
     elapsed = time.time() - t0
 
-    # Debug: verify log file location
-    log_exists = os.path.exists(log_path)
-    if not log_exists:
-        # Try finding it in the cwd's logs directory
-        alt_log = os.path.join("logs", f"{run_id}.txt")
-        if os.path.exists(alt_log):
-            log_path = alt_log
-            log_exists = True
-        else:
-            print(f"  WARNING: log not found at {log_path} or {alt_log}")
-
+    # Re-find log (subprocess may have created it)
+    log_path = _find_log(run_id, sweep, script)
     result = parse_log(log_path, experiment.name, seed)
 
     status = "OK" if result.final_val_bpb else "FAIL"
     bpb_str = f"val_bpb={result.final_val_bpb:.4f}" if result.final_val_bpb else result.error or "no result"
     print(f"  {status} {run_id} — {bpb_str} ({elapsed:.0f}s)")
-    if not result.final_val_bpb:
-        print(f"  log_path={log_path} exists={log_exists}")
 
     return result
 
@@ -724,12 +723,19 @@ def main():
 
     if args.report_only or args.dry_run:
         # Discover experiments from log files — try multiple locations
-        log_dir = Path(sweep.log_dir).resolve()
-        if not log_dir.exists():
-            # Try cwd-relative
-            log_dir = Path(sweep.log_dir)
-        if not log_dir.exists():
-            print(f"  WARNING: log_dir not found at {sweep.log_dir} or {Path(sweep.log_dir).resolve()}")
+        log_candidates = [
+            Path(sweep.log_dir),
+            Path(sweep.log_dir).resolve(),
+            Path(os.path.realpath(sweep.log_dir)),
+        ]
+        log_dir = None
+        for candidate in log_candidates:
+            if candidate.exists():
+                log_dir = candidate
+                break
+        if log_dir is None:
+            print(f"  WARNING: log_dir not found. Tried: {[str(c) for c in log_candidates]}")
+            log_dir = Path(sweep.log_dir)  # Fallback
         if log_dir.exists():
             for log_file in sorted(log_dir.glob("*.txt")):
                 m = re.match(r"(.+)_seed(\d+)\.txt", log_file.name)
