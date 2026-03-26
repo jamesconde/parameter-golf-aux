@@ -150,6 +150,7 @@ class Hyperparameters:
     # Character-level hash embedding (architecture modification)
     char_hash_buckets = int(os.environ.get("CHAR_HASH_BUCKETS", 0))  # 0 = disabled
     char_hash_dim = int(os.environ.get("CHAR_HASH_DIM", 128))
+    activation_sparsity = float(os.environ.get("ACTIVATION_SPARSITY", 0.0))  # 0 = disabled, try 0.1
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -787,12 +788,20 @@ class ValueEmbedding(nn.Module):
         return h * self.scale.to(dtype=h.dtype)
 
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: int, activation_sparsity: float = 0.0):
         super().__init__()
+        self.activation_sparsity = activation_sparsity
         # No CastedLinear -- weights come from banks
     def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor) -> Tensor:
-        x = F.leaky_relu(F.linear(x, up_w.to(x.dtype)), negative_slope=0.5)
-        return F.linear(x.square(), down_w.to(x.dtype))
+        x = F.leaky_relu(F.linear(x, up_w.to(x.dtype)), negative_slope=0.5).square()
+        if self.activation_sparsity > 0.0:
+            # Sparse LeakyReLU²: keep top-k activations, zero the rest (STE for gradients)
+            k = max(1, int(x.shape[-1] * self.activation_sparsity))
+            topk_val, _ = x.topk(k, dim=-1)
+            threshold = topk_val[..., -1:]
+            mask = (x >= threshold).float()
+            x = x + (x * mask - x).detach()  # STE: forward=sparse, backward=dense
+        return F.linear(x, down_w.to(x.dtype))
 
 class Block(nn.Module):
     def __init__(
@@ -808,13 +817,14 @@ class Block(nn.Module):
         dtg: bool = False,
         gated_attention: bool = False,
         value_residual: bool = False,
+        activation_sparsity: float = 0.0,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init,
                                         gated_attention=gated_attention, value_residual=value_residual)
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = MLP(dim, mlp_mult, activation_sparsity=activation_sparsity)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -866,6 +876,7 @@ class GPT(nn.Module):
         char_hash_buckets: int = 0,
         char_hash_dim: int = 128,
         tokenizer_path: str = "",
+        activation_sparsity: float = 0.0,
     ):
         super().__init__()
         self._ve_target_dim = num_kv_heads * (model_dim // num_heads)  # kv_dim for value projection
@@ -908,6 +919,7 @@ class GPT(nn.Module):
                     dtg=dtg,
                     gated_attention=gated_attention,
                     value_residual=value_residual,
+                    activation_sparsity=activation_sparsity,
                 )
                 for i in range(num_layers)
             ]
@@ -1616,6 +1628,7 @@ def main() -> None:
         char_hash_buckets=args.char_hash_buckets,
         char_hash_dim=args.char_hash_dim,
         tokenizer_path=args.tokenizer_path,
+        activation_sparsity=args.activation_sparsity,
     ).to(device).bfloat16()
     # Banks stay FP32 (like CastedLinear weights), cast to BF16 in forward
     base_model.qo_bank.data = base_model.qo_bank.data.float()

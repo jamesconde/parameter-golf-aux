@@ -426,6 +426,36 @@
         "ITERATIONS": "20000"
       },
       "description": "CharacterHash(1024, 64) \u2014 smaller dim (~31KB)"
+    },
+    {
+      "name": "sparse_act_01",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "ACTIVATION_SPARSITY": "0.1",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "Sparse LeakyReLU\u00b2 keep top 10% (STE gradient)"
+    },
+    {
+      "name": "sparse_act_02",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "ACTIVATION_SPARSITY": "0.2",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "Sparse LeakyReLU\u00b2 keep top 20% (STE gradient)"
+    },
+    {
+      "name": "sparse_act_05",
+      "env": {
+        "USE_AUX_LOSSES": "0",
+        "ACTIVATION_SPARSITY": "0.5",
+        "MAX_WALLCLOCK_SECONDS": "3600",
+        "ITERATIONS": "20000"
+      },
+      "description": "Sparse LeakyReLU\u00b2 keep top 50% (mild sparsity)"
     }
   ]
 }

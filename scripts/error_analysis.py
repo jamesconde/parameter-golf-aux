@@ -564,6 +564,7 @@ def main():
         char_hash_buckets=getattr(hp, 'char_hash_buckets', 0),
         char_hash_dim=getattr(hp, 'char_hash_dim', 128),
         tokenizer_path=getattr(hp, 'tokenizer_path', ''),
+        activation_sparsity=getattr(hp, 'activation_sparsity', 0.0),
     ).to(device)
 
     state_dict = torch.load(args.model, map_location=device, weights_only=True)
