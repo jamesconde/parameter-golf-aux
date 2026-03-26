@@ -76,7 +76,7 @@ def analyze_matrix(name: str, weight: torch.Tensor, group_size: int = 128) -> di
         usable = (len(error_flat) // group_size) * group_size
         error_grouped = error_flat[:usable].reshape(-1, group_size)
         position_profile = error_grouped.mean(dim=0).tolist()  # shape (group_size,)
-        position_std = error_grouped.mean(dim=0).std().item()
+        position_std = error_grouped.std(dim=0).mean().item()  # within-group positional variation
     else:
         position_profile = []
         position_std = 0.0
@@ -264,7 +264,7 @@ def main():
         "attn.c_qkv": (q_size + 2 * kv_size, dim),  # (1536, 768)
         "attn.proj": (dim, dim),                       # (768, 768)
         "mlp.gate_up": (hidden * 2, dim),              # (6144, 768)
-        "mlp.proj": (hidden, dim),                     # (768, 3072) — actually (3072, 768) input
+        "mlp.proj": (dim, hidden),                      # nn.Linear(hidden, dim) → weight shape (dim, hidden) = (768, 3072)
     }
 
     # Fused matrix splits
@@ -278,28 +278,65 @@ def main():
         "up": (hidden, hidden * 2),
     }
 
-    # Load checkpoint
-    if args.checkpoint and os.path.exists(args.checkpoint):
-        print(f"Loading checkpoint: {args.checkpoint}")
-        state_dict = torch.load(args.checkpoint, map_location=device, weights_only=True)
-    else:
-        print("No checkpoint provided. Attempting to load from train script...")
-        # Try importing the model and loading
-        sys.path.insert(0, ".")
+    # Load checkpoint — handle multiple formats
+    def load_checkpoint(path):
+        """Load checkpoint, handling raw state_dict, full model, or LZMA-compressed."""
+        import io
         try:
-            if os.path.exists("final_model_state.pt"):
-                state_dict = torch.load("final_model_state.pt", map_location=device, weights_only=True)
-                print("Loaded final_model_state.pt")
-            elif os.path.exists("final_model.pt"):
-                state_dict = torch.load("final_model.pt", map_location=device, weights_only=True)
-                print("Loaded final_model.pt")
-            else:
-                print("ERROR: No checkpoint found. Train a ternary model first.")
-                print("  Expected: final_model.pt or final_model_state.pt")
-                sys.exit(1)
+            # Try raw state_dict first
+            sd = torch.load(path, map_location=device, weights_only=True)
+            if isinstance(sd, dict) and any("weight" in k for k in sd):
+                return sd
+        except Exception:
+            pass
+        try:
+            # Try LZMA-compressed (ternary submission format)
+            import lzma
+            with open(path, "rb") as f:
+                raw = f.read()
+            try:
+                decompressed = lzma.decompress(raw)
+            except lzma.LZMAError:
+                decompressed = raw  # Not LZMA compressed
+            loaded = torch.load(io.BytesIO(decompressed), map_location=device, weights_only=False)
+            if isinstance(loaded, dict):
+                # Could be quantized format — look for state_dict inside
+                if "state_dict" in loaded:
+                    return loaded["state_dict"]
+                elif any("weight" in k for k in loaded):
+                    return loaded
+                else:
+                    return loaded
+            elif hasattr(loaded, "state_dict"):
+                return loaded.state_dict()
+        except Exception:
+            pass
+        # Last resort: load without weights_only
+        try:
+            loaded = torch.load(path, map_location=device, weights_only=False)
+            if hasattr(loaded, "state_dict"):
+                return loaded.state_dict()
+            return loaded
         except Exception as e:
-            print(f"ERROR loading checkpoint: {e}")
+            print(f"ERROR: Could not load {path}: {e}")
             sys.exit(1)
+
+    checkpoint_path = args.checkpoint
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        # Search for common checkpoint names
+        for candidate in ["final_model_state.pt", "final_model.pt", "checkpoint.pt"]:
+            if os.path.exists(candidate):
+                checkpoint_path = candidate
+                break
+
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        print("ERROR: No checkpoint found. Train a ternary model first.")
+        print("  Expected: final_model.pt, final_model_state.pt, or --checkpoint PATH")
+        sys.exit(1)
+
+    print(f"Loading checkpoint: {checkpoint_path}")
+    state_dict = load_checkpoint(checkpoint_path)
+    print(f"  Loaded {len(state_dict)} keys")
 
     # Find and analyze all ternary weight matrices
     all_results = []
