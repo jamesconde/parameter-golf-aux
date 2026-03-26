@@ -324,7 +324,7 @@ def main():
     checkpoint_path = args.checkpoint
     if not checkpoint_path or not os.path.exists(checkpoint_path):
         # Search for common checkpoint names
-        for candidate in ["final_model_state.pt", "final_model.pt", "checkpoint.pt"]:
+        for candidate in ["final_model_raw_sd.pt", "final_model_state.pt", "final_model.pt", "final_model.ternary.ptz", "checkpoint.pt"]:
             if os.path.exists(candidate):
                 checkpoint_path = candidate
                 break
