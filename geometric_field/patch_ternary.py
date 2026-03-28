@@ -64,21 +64,21 @@ def _fa_dispatch(q, k, v, causal=True):
     )
 
     # 4. torch.compile flag (if not already present)
-    if 'USE_COMPILE' not in source:
-        # Add USE_COMPILE to environment variable section
+    if 'use_compile' not in source:
+        # Add use_compile to the Hyperparameters class
         source = source.replace(
-            "COMPILE_MODE = os.environ.get('COMPILE_MODE', 'default')",
-            "COMPILE_MODE = os.environ.get('COMPILE_MODE', 'default')\n"
-            "USE_COMPILE = bool(int(os.environ.get('USE_COMPILE', '1')))"
+            '    compile_mode = _e("COMPILE_MODE", "default")',
+            '    compile_mode = _e("COMPILE_MODE", "default")\n'
+            '    use_compile = _e("USE_COMPILE", 1, int)'
         )
-        # Gate specific torch.compile calls (exact string match, not regex)
+        # Gate specific torch.compile calls using args.use_compile
         source = source.replace(
             "ns_orth = torch.compile(ns_orth)",
-            "ns_orth = torch.compile(ns_orth) if USE_COMPILE else ns_orth"
+            "ns_orth = torch.compile(ns_orth) if args.use_compile else ns_orth"
         )
         source = source.replace(
             'compiled_model = torch.compile(base_model, mode=args.compile_mode if args.compile_mode != "default" else None)',
-            'compiled_model = torch.compile(base_model, mode=args.compile_mode if args.compile_mode != "default" else None) if USE_COMPILE else base_model'
+            'compiled_model = torch.compile(base_model, mode=args.compile_mode if args.compile_mode != "default" else None) if args.use_compile else base_model'
         )
 
     # 5. Save raw state_dict before quantization (for Phase 0 analysis)
