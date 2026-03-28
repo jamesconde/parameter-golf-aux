@@ -17,12 +17,13 @@ def patch(source: str) -> str:
     """Apply all patches to the ternary training script."""
 
     # 1. Flash attention import fallback
+    # Rename FA3 import to _flash_attn_3 so step 2's replacement doesn't create recursion
     source = source.replace(
         'from flash_attn_interface import flash_attn_func',
         '''try:
-    from flash_attn_interface import flash_attn_func
+    from flash_attn_interface import flash_attn_func as _flash_attn_3
 except ImportError:
-    flash_attn_func = None
+    _flash_attn_3 = None
 try:
     from flash_attn import flash_attn_func as _flash_attn_2
 except ImportError:
@@ -42,15 +43,16 @@ def _sdpa_fallback(q, k, v, causal=True):
 
 def _fa_dispatch(q, k, v, causal=True):
     """Dispatch to best available attention implementation."""
-    if flash_attn_func is not None:
-        return flash_attn_func(q, k, v, causal=causal)
+    if _flash_attn_3 is not None:
+        return _flash_attn_3(q, k, v, causal=causal)
     elif _flash_attn_2 is not None:
         return _flash_attn_2(q, k, v, causal=causal)
     else:
         return _sdpa_fallback(q, k, v, causal=causal)'''
     )
 
-    # 2. Replace all flash_attn_func calls with _fa_dispatch
+    # 2. Replace all remaining flash_attn_func calls with _fa_dispatch
+    # Safe because FA3 was renamed to _flash_attn_3 above
     source = source.replace('flash_attn_func(', '_fa_dispatch(')
 
     # 3. SDP backend fallbacks
