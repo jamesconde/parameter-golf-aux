@@ -128,8 +128,11 @@ def analyze_fused_matrix(name: str, weight: torch.Tensor, group_size: int,
 
 def classify_scenario(matrix_results: list) -> dict:
     """Classify the overall scenario based on all matrix analyses."""
-    row_ratios = [r["row_structure_ratio"] for r in matrix_results if "." not in r["name"].split("/")[-1]]
-    col_ratios = [r["col_structure_ratio"] for r in matrix_results if "." not in r["name"].split("/")[-1]]
+    # Filter to full matrices only (exclude sub-splits like .Q, .K, .V, .gate, .up)
+    sub_split_suffixes = {".Q", ".K", ".V", ".gate", ".up"}
+    is_full = lambda name: not any(name.endswith(s) for s in sub_split_suffixes)
+    row_ratios = [r["row_structure_ratio"] for r in matrix_results if is_full(r["name"])]
+    col_ratios = [r["col_structure_ratio"] for r in matrix_results if is_full(r["name"])]
 
     mean_row = np.mean(row_ratios) if row_ratios else 0
     mean_col = np.mean(col_ratios) if col_ratios else 0
@@ -347,6 +350,7 @@ def main():
             # Try different key formats
             candidates = [
                 f"blocks.{layer_idx}.{mat_type}.weight",
+                f"blocks.{layer_idx}.{mat_type}.linear.weight",  # NormedTernaryLinear
                 f"blocks.{layer_idx}.{mat_type.replace('.', '_')}.weight",
             ]
 
@@ -357,14 +361,25 @@ def main():
                     break
 
             if weight is None:
-                # Search for partial match
+                # Search for partial match — find largest 2D weight containing the key name
+                mat_suffix = mat_type.split(".")[-1]
+                best_key = None
+                best_numel = 0
                 for k in state_dict:
-                    if f"blocks.{layer_idx}" in k and mat_type.split(".")[-1] in k and "weight" in k:
-                        weight = state_dict[k]
-                        break
+                    if f"blocks.{layer_idx}" in k and mat_suffix in k and "weight" in k:
+                        t = state_dict[k]
+                        if t.ndim == 2 and t.numel() > best_numel:
+                            best_key = k
+                            best_numel = t.numel()
+                if best_key is not None:
+                    weight = state_dict[best_key]
 
             if weight is None:
                 print(f"  WARNING: Could not find weight for blocks.{layer_idx}.{mat_type}")
+                # Print available keys for this layer to help debug
+                available = [k for k in state_dict if f"blocks.{layer_idx}" in k]
+                if available:
+                    print(f"           Available keys: {available[:5]}")
                 continue
 
             name = f"blocks.{layer_idx}.{mat_type}"
