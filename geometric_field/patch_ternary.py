@@ -83,7 +83,31 @@ def _fa_dispatch(q, k, v, causal=True):
             'compiled_model = torch.compile(base_model, mode=args.compile_mode if args.compile_mode != "default" else None) if args.use_compile else base_model'
         )
 
-    # 5. Save raw state_dict before quantization (for Phase 0 analysis)
+    # 5. Geometric field integration
+    # Add G env vars to Hyperparameters and apply after model construction
+    if 'geom_alpha' not in source:
+        source = source.replace(
+            '    use_compile = _e("USE_COMPILE", 1, int)',
+            '    use_compile = _e("USE_COMPILE", 1, int)\n'
+            '    geom_alpha = _e("GEOM_ALPHA", 0.0, float)\n'
+            '    geom_beta = _e("GEOM_BETA", 0.0, float)\n'
+            '    geom_signals = _e("GEOM_SIGNALS", "")'
+        )
+
+        # Inject G application after model construction + optimizer setup
+        # Find the line where compiled_model is assigned
+        source = source.replace(
+            '    compiled_model = torch.compile(base_model',
+            '    # Apply geometric field if configured\n'
+            '    if args.geom_alpha > 0 or args.geom_beta > 0:\n'
+            '        import sys as _sys; _sys.path.insert(0, "geometric_field")\n'
+            '        from geometric_field import apply_geometric_field\n'
+            '        apply_geometric_field(base_model, signals_path=args.geom_signals,\n'
+            '                              alpha=args.geom_alpha, beta=args.geom_beta)\n'
+            '    compiled_model = torch.compile(base_model'
+        )
+
+    # 6. Save raw state_dict before quantization (for Phase 0 analysis)
     source = source.replace(
         '        # Two methods: Standard Base-3 vs Bitmask Mapping',
         '        # Save raw state_dict for Phase 0 analysis\n'
