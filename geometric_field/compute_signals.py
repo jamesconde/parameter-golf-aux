@@ -111,17 +111,18 @@ def compute_input_covariance(model, val_tokens: np.ndarray, device: torch.device
     model.eval()
     with torch.no_grad():
         for i in range(0, n_seqs, batch_size):
-            batch = tokens[i:i + batch_size, :seq_len].to(device)
-            targets = tokens[i:i + batch_size, 1:seq_len + 1].to(device)
+            x = tokens[i:i + batch_size, :seq_len].to(device)
+            y = tokens[i:i + batch_size, 1:seq_len + 1].to(device)
             try:
-                model(batch, targets)
-            except Exception:
-                # Some models need different calling conventions
+                model(x, y)
+            except Exception as e1:
+                print(f"  WARNING: forward(x, y) failed: {e1}")
+                # Try without targets
                 try:
-                    model(batch)
-                except Exception as e:
-                    print(f"  WARNING: forward pass failed: {e}")
-                    break
+                    model(x)
+                except Exception as e2:
+                    print(f"  WARNING: forward(x) also failed: {e2}")
+                break
             if (i // batch_size + 1) % 5 == 0:
                 print(f"  Batch {i // batch_size + 1}/{n_seqs // batch_size}")
 
@@ -238,7 +239,7 @@ def main():
         "delta_e": delta_e.cpu(),
         "C_diag": {k: v.cpu() for k, v in C_diag.items()},
         "embed_dim": embeddings.shape[1],
-        "model_dim": hp.model_dim,
+        "model_dim": args_hp.model_dim,
     }, args.output)
     print(f"\nSignals saved to {args.output}")
     print(f"  delta_e: {delta_e.shape}")
