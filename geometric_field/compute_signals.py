@@ -109,7 +109,7 @@ def compute_input_covariance(model, val_tokens: np.ndarray, device: torch.device
     tokens = tokens.reshape(n_seqs, seq_len + 1)
 
     model.eval()
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for i in range(0, n_seqs, batch_size):
             x = tokens[i:i + batch_size, :seq_len].to(device)
             y = tokens[i:i + batch_size, 1:seq_len + 1].to(device)
@@ -117,11 +117,6 @@ def compute_input_covariance(model, val_tokens: np.ndarray, device: torch.device
                 model(x, y)
             except Exception as e1:
                 print(f"  WARNING: forward(x, y) failed: {e1}")
-                # Try without targets
-                try:
-                    model(x)
-                except Exception as e2:
-                    print(f"  WARNING: forward(x) also failed: {e2}")
                 break
             if (i // batch_size + 1) % 5 == 0:
                 print(f"  Batch {i // batch_size + 1}/{n_seqs // batch_size}")
