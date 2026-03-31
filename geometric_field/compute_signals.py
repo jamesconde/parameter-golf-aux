@@ -174,11 +174,28 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load model
+    # Load model — set env vars to match the submission before importing Hyperparameters
+    # These MUST match the checkpoint architecture
+    submission_env = {
+        "VOCAB_SIZE": "8192", "NUM_LAYERS": "10", "MODEL_DIM": "768",
+        "NUM_HEADS": "8", "NUM_KV_HEADS": "4", "MLP_MULT": "4",
+        "EMBED_DIM": "254", "BITNET_GROUP_SIZE": "128",
+        "ACTIVATION": "relu2", "ROPE_TYPE": "yarn", "YARN_MAX_LEN": "2048",
+        "ROPE_BASE": "5000", "LOGIT_SOFTCAP": "10", "SOFTCAP_TYPE": "poly",
+        "QK_GAIN_INIT": "2.25", "FP_STORAGE": "FP8",
+        "BIGRAM_HASH": "0", "SMEAR": "0", "DIFF_ATTN": "0",
+        "MLP_GROUPS": "0", "MTP_HEADS": "0", "TIE_EMBEDDINGS": "1",
+        "TRAIN_SEQ_LEN": "1024",
+    }
+    for k, v in submission_env.items():
+        os.environ.setdefault(k, v)
+
     print("Loading model...")
     sys.path.insert(0, ".")
     from train_gpt_cuda_ternary import Hyperparameters, GPT
     args_hp = Hyperparameters()
+    print(f"  Config: dim={args_hp.model_dim}, layers={args_hp.num_layers}, "
+          f"vocab={args_hp.vocab_size}, heads={args_hp.num_heads}")
     model = GPT(
         vocab_size=args_hp.vocab_size, num_layers=args_hp.num_layers,
         model_dim=args_hp.model_dim, num_heads=args_hp.num_heads,
@@ -187,13 +204,16 @@ def main():
         logit_softcap=args_hp.logit_softcap, rope_base=args_hp.rope_base,
         qk_gain_init=args_hp.qk_gain_init,
         group_size=args_hp.bitnet_group_size, activation=args_hp.activation_type,
-        mtp_heads_count=args_hp.mtp_heads_count, embed_dim=args_hp.embed_dim,
-        attn_proj_type=args_hp.attn_proj_type, logit_head_type=args_hp.logit_head_type,
+        mtp_heads_count=getattr(args_hp, 'mtp_heads_count', 0),
+        embed_dim=args_hp.embed_dim,
+        attn_proj_type=getattr(args_hp, 'attn_proj_type', 'ternary'),
+        logit_head_type=getattr(args_hp, 'logit_head_type', 'default'),
         fp_storage=args_hp.fp_storage, bigram_hash=args_hp.bigram_hash,
         softcap_type=args_hp.softcap_type, smear=args_hp.smear,
         rope_type=args_hp.rope_type, yarn_max_len=args_hp.yarn_max_len,
-        train_seq_len=args_hp.train_seq_len, diff_attn=args_hp.diff_attn,
-        mlp_groups=args_hp.mlp_groups,
+        train_seq_len=args_hp.train_seq_len,
+        diff_attn=getattr(args_hp, 'diff_attn', 0),
+        mlp_groups=getattr(args_hp, 'mlp_groups', 0),
     ).to(device).bfloat16()
     sd = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(sd, strict=False)
