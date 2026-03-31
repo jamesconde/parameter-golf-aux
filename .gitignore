@@ -16,6 +16,7 @@ data/
 
 # Private strategy docs (not for public repo)
 docs/GEOMETRIC_FIELD_MODULATION.md
+docs/TERNARY_ARCHITECTURE_EXPERIMENTS.md
 
 # OS
 .DS_Store
