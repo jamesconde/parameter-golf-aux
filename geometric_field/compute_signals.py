@@ -178,8 +178,23 @@ def main():
     print("Loading model...")
     sys.path.insert(0, ".")
     from train_gpt_cuda_ternary import Hyperparameters, GPT
-    hp = Hyperparameters()
-    model = GPT(hp).to(device)
+    args_hp = Hyperparameters()
+    model = GPT(
+        vocab_size=args_hp.vocab_size, num_layers=args_hp.num_layers,
+        model_dim=args_hp.model_dim, num_heads=args_hp.num_heads,
+        num_kv_heads=args_hp.num_kv_heads, mlp_mult=args_hp.mlp_mult,
+        tie_embeddings=args_hp.tie_embeddings, tied_embed_init_std=args_hp.tied_embed_init_std,
+        logit_softcap=args_hp.logit_softcap, rope_base=args_hp.rope_base,
+        qk_gain_init=args_hp.qk_gain_init,
+        group_size=args_hp.bitnet_group_size, activation=args_hp.activation_type,
+        mtp_heads_count=args_hp.mtp_heads_count, embed_dim=args_hp.embed_dim,
+        attn_proj_type=args_hp.attn_proj_type, logit_head_type=args_hp.logit_head_type,
+        fp_storage=args_hp.fp_storage, bigram_hash=args_hp.bigram_hash,
+        softcap_type=args_hp.softcap_type, smear=args_hp.smear,
+        rope_type=args_hp.rope_type, yarn_max_len=args_hp.yarn_max_len,
+        train_seq_len=args_hp.train_seq_len, diff_attn=args_hp.diff_attn,
+        mlp_groups=args_hp.mlp_groups,
+    ).to(device).bfloat16()
     sd = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(sd, strict=False)
     model.eval()

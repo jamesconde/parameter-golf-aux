@@ -100,8 +100,8 @@ def _fa_dispatch(q, k, v, causal=True):
             '    compiled_model = torch.compile(base_model',
             '    # Apply geometric field if configured\n'
             '    if args.geom_alpha > 0 or args.geom_beta > 0:\n'
-            '        import sys as _sys; _sys.path.insert(0, "geometric_field")\n'
-            '        from geometric_field import apply_geometric_field\n'
+            '        import sys as _sys; _sys.path.insert(0, ".")\n'
+            '        from geometric_field.geometric_field import apply_geometric_field\n'
             '        apply_geometric_field(base_model, signals_path=args.geom_signals,\n'
             '                              alpha=args.geom_alpha, beta=args.geom_beta)\n'
             '    compiled_model = torch.compile(base_model'

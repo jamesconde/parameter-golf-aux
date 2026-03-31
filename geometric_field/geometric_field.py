@@ -34,16 +34,21 @@ def compute_G_column(C_diag: Tensor, delta_e: Tensor,
     """
     G_col = torch.ones_like(C_diag)
 
+    # Guard against NaN inputs
+    if torch.isnan(C_diag).any() or (delta_e is not None and torch.isnan(delta_e).any()):
+        print("  WARNING: NaN in signals, returning identity G")
+        return G_col
+
     if alpha > 0 and C_diag is not None:
         # Relative importance: high-variance dims get compressed
-        covar_signal = (C_diag / C_diag.mean().clamp(min=1e-8)).sqrt()
-        G_col = G_col / (1.0 + alpha * (covar_signal - 1.0))
+        covar_signal = (C_diag.clamp(min=1e-10) / C_diag.mean().clamp(min=1e-8)).sqrt()
+        G_col = G_col / (1.0 + alpha * (covar_signal - 1.0)).clamp(min=0.1)
 
     if beta > 0 and delta_e is not None:
         # Word-boundary alignment: dims carrying boundary info get compressed
         boundary_signal = delta_e.abs()
         boundary_signal = boundary_signal / boundary_signal.mean().clamp(min=1e-8)
-        G_col = G_col / (1.0 + beta * (boundary_signal - 1.0))
+        G_col = G_col / (1.0 + beta * (boundary_signal - 1.0)).clamp(min=0.1)
 
     # Normalize to mean=1 (G redistributes, doesn't globally scale)
     G_col = G_col / G_col.mean().clamp(min=1e-8)
@@ -51,37 +56,35 @@ def compute_G_column(C_diag: Tensor, delta_e: Tensor,
     return G_col
 
 
-def patch_ternary_forward(module: nn.Module, G_col: Tensor):
+def patch_ternary_forward(module: nn.Module, G_col: Tensor, is_normed: bool = False):
     """Monkey-patch a TernaryLinear's forward to apply G before STE.
 
     This is the least invasive integration — no class replacement needed.
     The original forward is preserved and called with modulated weights.
     """
-    original_forward = module.forward
-    _G_col = G_col.clone()  # Capture for closure
+    _G_col = G_col.clone()
+    _is_normed = is_normed
+    _group_size = getattr(module, 'group_size', 128)
 
     def geometric_forward(x: Tensor) -> Tensor:
-        # Get the weight
         w = module.weight.bfloat16()
 
         # Apply G column-wise before STE
         G = _G_col.to(device=w.device, dtype=w.dtype)
-        # G_col shape: (M,) where M = in_features = w.shape[1]
-        # For nn.Linear weight shape is (out_features, in_features)
-        w_mod = w * G.unsqueeze(0)  # broadcast (N, M) * (1, M)
+        w_mod = w * G.unsqueeze(0)  # (N, M) * (1, M)
 
         # Ternary STE quantization on modulated weights
-        g = module.group_size
+        g = _group_size
         w_g = w_mod.reshape(-1, g)
         scale = w_g.abs().mean(-1, keepdim=True).clamp(min=1e-8)
         q = (w_g / scale).round().clamp(-1, 1)
         w_ternary = w_mod + ((q * scale).reshape(w_mod.shape) - w_mod).detach()
 
-        # Handle NormedTernaryLinear (RMSNorm on input)
-        if hasattr(module, '_is_normed') and module._is_normed:
+        # NormedTernaryLinear applies RMSNorm to input
+        if _is_normed:
             x = F.rms_norm(x, (x.size(-1),))
 
-        return F.linear(x, w_ternary,
+        return F.linear(x, w_ternary.to(x.dtype),
                         module.bias.to(x.dtype) if module.bias is not None else None)
 
     module.forward = geometric_forward
@@ -125,11 +128,7 @@ def apply_geometric_field(model: nn.Module, signals_path: str = "",
         w = module.weight
         N, M = w.shape  # (out_features, in_features)
 
-        # Mark if this is a NormedTernaryLinear
-        if "Normed" in cls_name:
-            module._is_normed = True
-        else:
-            module._is_normed = False
+        is_normed = "Normed" in cls_name
 
         # Get C_diag for this layer
         layer_C = None
@@ -174,7 +173,7 @@ def apply_geometric_field(model: nn.Module, signals_path: str = "",
         G_col = compute_G_column(layer_C, layer_delta_e, effective_alpha, effective_beta)
 
         # Patch the forward method
-        patch_ternary_forward(module, G_col)
+        patch_ternary_forward(module, G_col, is_normed=is_normed)
         patched += 1
 
         g_range = f"[{G_col.min():.3f}, {G_col.max():.3f}]"
