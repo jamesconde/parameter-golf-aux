@@ -94,16 +94,32 @@ def _fa_dispatch(q, k, v, causal=True):
             '    geom_signals = _e("GEOM_SIGNALS", "")'
         )
 
-        # Inject G application after model construction + optimizer setup
-        # Find the line where compiled_model is assigned
+        # Add residual and structured zeros hyperparameters
+        source = source.replace(
+            '    geom_signals = _e("GEOM_SIGNALS", "")',
+            '    geom_signals = _e("GEOM_SIGNALS", "")\n'
+            '    residual_epsilon = _e("RESIDUAL_EPSILON", 0.0, float)\n'
+            '    residual_coarse_gs = _e("RESIDUAL_COARSE_GS", 512, int)\n'
+            '    zero_bias_range = _e("ZERO_BIAS_RANGE", 0.0, float)'
+        )
+
+        # Inject all experiment applications after model construction
         source = source.replace(
             '    compiled_model = torch.compile(base_model',
-            '    # Apply geometric field if configured\n'
+            '    # Apply experiments if configured\n'
+            '    import sys as _sys; _sys.path.insert(0, ".")\n'
             '    if args.geom_alpha > 0 or args.geom_beta > 0:\n'
-            '        import sys as _sys; _sys.path.insert(0, ".")\n'
             '        from geometric_field.geometric_field import apply_geometric_field\n'
             '        apply_geometric_field(base_model, signals_path=args.geom_signals,\n'
             '                              alpha=args.geom_alpha, beta=args.geom_beta)\n'
+            '    if args.residual_epsilon > 0:\n'
+            '        from geometric_field.ternary_residual import apply_ternary_residual\n'
+            '        apply_ternary_residual(base_model, epsilon=args.residual_epsilon,\n'
+            '                               coarse_group_size=args.residual_coarse_gs)\n'
+            '    if args.zero_bias_range > 0:\n'
+            '        from geometric_field.structured_zeros import apply_structured_zeros\n'
+            '        apply_structured_zeros(base_model, signals_path=args.geom_signals,\n'
+            '                               bias_range=args.zero_bias_range)\n'
             '    compiled_model = torch.compile(base_model'
         )
 
