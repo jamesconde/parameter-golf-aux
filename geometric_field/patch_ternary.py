@@ -94,13 +94,16 @@ def _fa_dispatch(q, k, v, causal=True):
             '    geom_signals = _e("GEOM_SIGNALS", "")'
         )
 
-        # Add residual and structured zeros hyperparameters
+        # Add residual, structured zeros, and activation experiment hyperparameters
         source = source.replace(
             '    geom_signals = _e("GEOM_SIGNALS", "")',
             '    geom_signals = _e("GEOM_SIGNALS", "")\n'
             '    residual_epsilon = _e("RESIDUAL_EPSILON", 0.0, float)\n'
             '    residual_coarse_gs = _e("RESIDUAL_COARSE_GS", 512, int)\n'
-            '    zero_bias_range = _e("ZERO_BIAS_RANGE", 0.0, float)'
+            '    zero_bias_range = _e("ZERO_BIAS_RANGE", 0.0, float)\n'
+            '    power_act = _e("POWER_ACT", 0, int)\n'
+            '    stoch_depth = _e("STOCH_DEPTH", 0.0, float)\n'
+            '    gauge_relu = _e("GAUGE_RELU", 0, int)'
         )
 
         # Inject all experiment applications after model construction
@@ -120,6 +123,11 @@ def _fa_dispatch(q, k, v, causal=True):
             '        from geometric_field.structured_zeros import apply_structured_zeros\n'
             '        apply_structured_zeros(base_model, signals_path=args.geom_signals,\n'
             '                               bias_range=args.zero_bias_range)\n'
+            '    if args.power_act or args.stoch_depth > 0 or args.gauge_relu:\n'
+            '        from geometric_field.activation_experiments import apply_activation_experiments\n'
+            '        apply_activation_experiments(base_model, power_act=bool(args.power_act),\n'
+            '                                     stoch_depth=args.stoch_depth,\n'
+            '                                     gauge_relu_enabled=bool(args.gauge_relu))\n'
             '    compiled_model = torch.compile(base_model'
         )
 
