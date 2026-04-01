@@ -103,7 +103,8 @@ def _fa_dispatch(q, k, v, causal=True):
             '    zero_bias_range = _e("ZERO_BIAS_RANGE", 0.0, float)\n'
             '    power_act = _e("POWER_ACT", 0, int)\n'
             '    stoch_depth = _e("STOCH_DEPTH", 0.0, float)\n'
-            '    gauge_relu = _e("GAUGE_RELU", 0, int)'
+            '    gauge_relu = _e("GAUGE_RELU", 0, int)\n'
+            '    asymmetric_ternary = _e("ASYM_TERNARY", 0, int)'
         )
 
         # Inject all experiment applications after model construction
@@ -128,6 +129,9 @@ def _fa_dispatch(q, k, v, causal=True):
             '        apply_activation_experiments(base_model, power_act=bool(args.power_act),\n'
             '                                     stoch_depth=args.stoch_depth,\n'
             '                                     gauge_relu_enabled=bool(args.gauge_relu))\n'
+            '    if args.asymmetric_ternary:\n'
+            '        from geometric_field.asymmetric_ternary import apply_asymmetric_ternary\n'
+            '        apply_asymmetric_ternary(base_model)\n'
             '    compiled_model = torch.compile(base_model'
         )
 
