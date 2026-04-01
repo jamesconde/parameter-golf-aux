@@ -49,8 +49,9 @@ def apply_parametric_power(model: nn.Module):
                 h = fc(x)
                 # leaky_relu preserves gradient for negative values
                 h = F.leaky_relu(h, negative_slope=0.01)
-                # Learned power exponent
-                h = h.abs().pow(power_param.to(dtype=h.dtype)) * h.sign()
+                # Learned power exponent (clamped to [1.0, 4.0] to prevent gradient issues)
+                p = power_param.clamp(1.0, 4.0).to(dtype=h.dtype)
+                h = h.abs().clamp(min=1e-6).pow(p) * h.sign()
                 return proj(h)
             return forward
 
@@ -151,10 +152,10 @@ def gauge_relu(x: Tensor) -> Tensor:
 
     x_pairs = x.reshape(*shape[:-1], -1, 2)  # (..., dim//2, 2)
 
-    # Magnitude: sqrt(a² + b²)
-    magnitude = (x_pairs[..., 0].square() + x_pairs[..., 1].square()).sqrt()
+    # Magnitude: sqrt(a² + b² + eps) — eps prevents NaN gradient at zero
+    magnitude = (x_pairs[..., 0].square() + x_pairs[..., 1].square() + 1e-8).sqrt()
 
-    # Phase: atan2(b, a)
+    # Phase: atan2(b, a) — safe because magnitude > 0 from eps
     phase = torch.atan2(x_pairs[..., 1], x_pairs[..., 0])
 
     # Apply nonlinearity to magnitude only (leaky_relu then square, like relu²)
