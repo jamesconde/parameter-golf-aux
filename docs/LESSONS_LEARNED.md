@@ -309,21 +309,23 @@ The competition is dominated by quantization innovations (GPTQ, int6 QAT) and ar
 
 ---
 
-## In-Progress: Progressive Depth Growing (Int6 SOTA)
+## FAILED: Progressive Depth Growing (Int6 SOTA)
 
-**Concept:** Start training with fewer layers (7L, ~55ms/step) for the first 33% of wallclock, then switch to full depth (11L, ~83ms/step). The shallow phase runs ~50% more steps in the same time, exposing the model to more data. At growth transition, dormant layer banks are restored to their initial values (weight decay would have shrunk them).
+**Concept:** Start training with fewer layers (7L) for the first 33% of wallclock, then switch to full depth (11L). The shallow phase runs ~18% more steps in the same time.
 
-**Implementation:** `progressive_growing/patch_progressive.py` — patches the SOTA `train_gpt.py` with:
-- `run_shallow_step()`: temporarily modifies `num_encoder_layers`/`num_decoder_layers` for forward pass
-- Phase 1 uses uncompiled `base_model` (shallow), Phase 2 uses compiled `model` (full)
-- Dormant bank restoration at growth transition (if muon_wd > 0)
-- Env vars: `GROW_FRACTION` (0.0=disabled, 0.33=grow at 33%), `GROW_INITIAL_LAYERS` (default 7)
+**Result: Significantly harmful.** All variants worse than baseline (p < 0.05).
 
-**Notebook:** `notebooks/progressive_growing.ipynb` — 4 experiments x 3 seeds
+| Experiment | BPB | Delta vs Baseline | Extra Steps |
+|-----------|-----|-------------------|-------------|
+| baseline | 3.386 ± 0.006 | — | 217 steps |
+| grow_25pct_7L | 3.766 ± 0.008 | +0.381 (worse) | +14% |
+| grow_33pct_7L | 3.792 ± 0.111 | +0.406 (worse) | −21% |
+| grow_33pct_5L | 4.154 ± 0.205 | +0.768 (worse) | +37% |
 
-**Status:** Implemented, syntax-verified, awaiting Colab testing.
+**Why it failed:** The model uses U-Net skip connections — first half of layers push to a skip stack, second half pop from it. When transitioning from 7→11 layers:
+1. Blocks 3-4 change roles (decoder → encoder), so their learned representations don't match their new function
+2. Layers 7-10 activate with random/restored weights, creating a quality shock
+3. High variance (0.11-0.21 std vs 0.006 baseline) confirms the transition is unstable
+4. More aggressive growing (5L) was even worse — the representation mismatch scales with the gap
 
-**Known risks:**
-- Newton-Schulz orthogonalization processes full parameter banks including zero-gradient dormant slices — may produce small NS5 artifacts on dormant parameters (mitigated by bank restoration)
-- EMA tracks decayed dormant layers during Phase 1 — will self-correct after growth
-- VE layers (9-10) are not used during shallow Phase 1 (layers 0-6 only) — acceptable
+**Lesson:** Progressive growing is incompatible with U-Net skip connection architectures where layers have asymmetric roles. The extra data exposure from faster steps cannot compensate for the destructive role-change at transition. This technique might work on a plain transformer stack without skip connections, but not on the SOTA architecture.
