@@ -246,6 +246,62 @@ Requires careful opportunity-cost analysis:
 | **Byte-level auxiliary supervision** | **Uncontested** |
 | **Independent neural ensembles** | **Uncontested** |
 
+---
+
+## Update: April 14, 2026 — Deep Dive Verification
+
+### Competition State Update
+- **Merged SOTA moved:** 1.0810 BPP (PR #1493 by bigbag, merged April 9)
+- **Pending frontier:** ~1.0728 BPB (PR #1610), ~1.0639 BPB (PR #1585, casefold controversy)
+- **~1600+ total PRs**, competition ends April 30
+
+### Corrections to April 7 Findings
+
+**Online Hessian Accumulation: NO LONGER NOVEL — TRIED AND FAILED**
+- PR #1072 (vimeto, March 29): originated the idea — accumulate H=X^TX every 25 steps during training
+- PR #1251 (ibarrajo, April 2): tested it — **+17ms/step overhead costs ~85s, more than the 30-40s saved by skipping calibration. Net negative.**
+- Previously listed as our #1 recommendation. Now confirmed dead.
+
+**Shared Layers + LoRA: NOT NOVEL**
+- 6+ PRs tried it: #1096, #1181, #1552, #1549, #686, #363
+- None beat flat baselines. Quantization error compounds through shared layers, Muon/LoRA interaction causes divergence at rank>1.
+
+### Newly Verified Novel Ideas (April 14 deep dive)
+
+All checked against PRs through #1620+, Issue #140, and PR #1602 (100+ experiment autopsy).
+
+| # | Idea | Status | Expected Gain | Evidence |
+|---|------|--------|---------------|----------|
+| 1 | **Logistic-domain mixing** | **NOVEL** | 0.002-0.005 BPB | One informal test noted in Issue #140 (-0.0003, "too slow") but no formal PR. PR #953/#995 "LogisticContextMixer" closed for compliance, not properly tested. |
+| 2 | **Fixed-Share Hedge** | **NOVEL** | 0.003-0.008 BPB | Zero implementations across all 21 Hedge PRs. Listed in Issue #140 as Tier 1 untried. |
+| 3 | **Skip-gram context** (non-contiguous hashing) | **NOVEL** | 0.005-0.015 BPB | All BigramHash uses consecutive positions only. Listed in Issue #140 as Tier 1 untried. |
+| 4 | **qTTT** (query-only TTT) | **NOVEL** | 0.003-0.010 BPB | Block-level freezing exists (PR #461, #1477), LoRA TTT exists (PR #1530), but projection-level selectivity (cache K/V, adapt only Q) untried. |
+| 5 | **Greedy model soup** | **NOVEL** | <0.003 BPB | SWA/EMA universal, but selective checkpoint averaging based on val performance untried. |
+| 6 | **Token merging mid-network** | **NOVEL** | Unknown | PR #1121 tried fixed adjacent-pair merging (1.4447 BPB, poor). Similarity-based ToMe untried. |
+| 7 | **Byte-level auxiliary head** | **NOVEL** | Unknown | Zero attempts. PR #1519 does byte-weighted CE loss (adjacent). |
+| 8 | **Neural residual correction** | **NOVEL** | Unknown | Zero attempts. |
+| 9 | **Within-run NAS** | **NOVEL** | Unknown | Only offline search exists. |
+| 10 | **Multi-neural ensemble** | **NOVEL** | Unknown | Practical concern: 2 half-sized models likely worse than 1 full model. |
+| 11 | **Mousse/Shampoo** | **PARTIAL** | ~0.002 BPP | Diagonal-only Mousse tried once (PR #1440). Full Shampoo Kronecker untried. |
+
+### Top Recommendations (revised April 14)
+
+**Eval-time-only changes (no retraining needed):**
+1. **Fixed-Share Hedge** — handles non-stationary expert mixing, one parameter (switching rate), Issue #140 Tier 1
+2. **Skip-gram context** — hash positions -1,-3,-5 as eval-time features, zero artifact cost, Issue #140 Tier 1
+3. **Logistic-domain mixing** — one-line math change, but weak negative signal from informal test
+4. **qTTT** — cache K/V, adapt Q only, 2-3x more TTT epochs in eval budget
+
+**Training changes (need 8×H100):**
+5. **Greedy model soup** — post-training checkpoint selection, zero training overhead
+
+### Failed/Dead Ideas (confirmed April 14)
+- Online Hessian accumulation: tried, overhead > savings (PR #1072, #1251)
+- Shared layers + LoRA: tried, doesn't beat flat baselines (6+ PRs)
+- Compression-aware training: taken by PR #1385, weak results
+- Progressive growing: our experiment, catastrophic on U-Net architecture
+- All auxiliary losses: comprehensively failed (Issue #140, PR #1602)
+
 ## Sources
 
 - [OpenAI Parameter Golf Repository](https://github.com/openai/parameter-golf)
